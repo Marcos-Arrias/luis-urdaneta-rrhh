@@ -2,18 +2,42 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="0; url=http://localhost/0.0.2/index.php">
     <title>Redirigiendo al Portal RRHH...</title>
     <script>
-        // Redirección inmediata por JS
-        window.location.replace("http://localhost/0.0.2/index.php");
+        let loginUrl = null;
+
+        if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+            loginUrl = new URL("./index.php", window.location.href);
+        } else if (window.location.protocol === "file:") {
+            const projectPath = window.location.pathname.match(/\/htdocs\/(.*)$/i);
+            if (projectPath) {
+                loginUrl = new URL(
+                    projectPath[1].replace(/index\.html$/i, "index.php"),
+                    "https://localhost/"
+                );
+            }
+        }
+
+        if (loginUrl) {
+            document.addEventListener("DOMContentLoaded", () => {
+                document.getElementById("login-link").href = loginUrl.href;
+            });
+            window.location.replace(loginUrl.href);
+        } else {
+            document.addEventListener("DOMContentLoaded", () => {
+                document.getElementById("redirect-status").textContent = window.location.protocol === "file:"
+                    ? "No se pudo determinar la ruta del proyecto dentro de htdocs. Abra el proyecto mediante Apache en XAMPP."
+                    : "Abra este proyecto mediante Apache en XAMPP.";
+                document.getElementById("login-link").hidden = true;
+            });
+        }
     </script>
 </head>
 <body style="background: #0f2027; color: #fff; font-family: 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center;">
     <div>
         <h2 style="margin-bottom: 10px;">U.E.N Luis Urdaneta</h2>
-        <p style="opacity: 0.8;">Redirigiendo al Sistema de Gestión de Personal...</p>
-        <p><small>Si no es transferido automáticamente, <a href="http://localhost/0.0.2/index.php" style="color: #4facfe; text-decoration: none; font-weight: bold;">haga clic aquí</a>.</small></p>
+        <p id="redirect-status" style="opacity: 0.8;">Redirigiendo al Sistema de Gestión de Personal...</p>
+        <p><small>Si no es transferido automáticamente, <a id="login-link" href="./index.php" style="color: #4facfe; text-decoration: none; font-weight: bold;">haga clic aquí</a>.</small></p>
     </div>
 </body>
 </html>
