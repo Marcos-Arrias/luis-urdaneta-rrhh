@@ -6,6 +6,7 @@ header('Content-Type: application/json');
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nombre = trim($_POST['nombre'] ?? '');
     $tipo_personal_id = intval($_POST['tipo_personal_id'] ?? 0);
+    $descripcion = trim($_POST['descripcion'] ?? ''); // NUEVO CAMPO
 
     if (empty($nombre) || $tipo_personal_id === 0) {
         echo json_encode(['success' => false, 'error' => 'Datos incompletos.']);
@@ -13,9 +14,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     try {
-        // Apunta a la nueva tabla catálogo
-        $stmt = $pdo->prepare("INSERT INTO cat_cargos_areas (tipo_personal_id, nombre) VALUES (?, ?)");
-        $stmt->execute([$tipo_personal_id, $nombre]);
+        $stmt = $pdo->prepare("INSERT INTO cat_cargos_areas (tipo_personal_id, nombre, descripcion) VALUES (?, ?, ?)");
+        $stmt->execute([$tipo_personal_id, $nombre, $descripcion]);
         $id = $pdo->lastInsertId();
         
         registrarHistorial($pdo, 'Catálogos', 'CREAR', "Se agregó rápido un nuevo cargo: $nombre");
