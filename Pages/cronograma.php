@@ -53,43 +53,63 @@ $todo_personal = $pdo->query("SELECT id, CONCAT(apellidos, ', ', nombres) as nom
 include '../Includes/header.php'; include '../Includes/sidebar.php';
 ?>
 
+
+<style>
+.agenda-row { display: flex; margin-bottom: 1.5rem; position: relative; }
+.agenda-time { width: 120px; text-align: right; padding-right: 1.5rem; border-right: 3px solid var(--bs-primary); font-weight: 800; color: var(--bs-primary); flex-shrink: 0; }
+.agenda-time small { display: block; font-weight: 500; color: var(--bs-secondary); font-size: 0.8rem; }
+.agenda-card { flex-grow: 1; margin-left: 1.5rem; background: var(--bs-body-tertiary); border-radius: 1rem; padding: 1.5rem; box-shadow: 0 5px 15px rgba(0,0,0,0.05); border: 1px solid var(--bs-border-color); position: relative; transition: transform 0.2s; }
+.agenda-card:hover { transform: scale(1.01); border-color: var(--bs-primary); }
+.agenda-card::before { content: ''; position: absolute; left: -1.5rem; top: 1.2rem; width: 15px; height: 3px; background: var(--bs-primary); }
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="bi bi-list-task me-2 text-primary"></i> Cronograma Diario</h2>
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalRegistro"><i class="bi bi-plus-circle me-2"></i>Nueva Actividad</button>
+    <div>
+        <h2 class="fw-bold mb-0"><i class="bi bi-calendar2-event me-2 text-primary"></i> Agenda Diaria</h2>
+        <p class="text-muted small mb-0">Eventos y actividades programadas para la fecha.</p>
+    </div>
+    <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold" data-bs-toggle="modal" data-bs-target="#modalRegistro">
+        <i class="bi bi-plus-lg me-1"></i> Nueva Actividad
+    </button>
 </div>
 
-<form method="GET" class="mb-4 d-flex align-items-center bg-body-tertiary p-3 rounded shadow-sm border-start border-4 border-secondary">
-    <label class="me-3 fw-bold">Ver del día:</label><input type="date" name="fecha_filtro" class="form-control w-auto me-2" value="<?= $fechaFiltro ?>"><button class="btn btn-secondary">Filtrar</button>
+<form method="GET" class="mb-5 bg-body-tertiary p-3 rounded-pill shadow-sm d-inline-flex align-items-center border">
+    <i class="bi bi-search ms-2 me-3 text-muted"></i>
+    <input type="date" name="fecha_filtro" class="form-control border-0 bg-transparent shadow-none" value="<?= $fechaFiltro ?>" style="width: 150px;">
+    <button class="btn btn-dark rounded-pill px-4 ms-2">Consultar</button>
 </form>
 
-<div class="row">
+<div class="container-fluid px-0 mt-3">
     <?php if (count($datos) > 0): ?>
         <?php foreach ($datos as $d): ?>
-        <div class="col-md-6 col-lg-4 mb-4">
-            <div class="card shadow-sm border-0 border-top border-4 border-primary h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <span class="badge bg-primary fs-6 mb-2"><?= date('h:i A', strtotime($d['hora_inicio'])) ?> - <?= date('h:i A', strtotime($d['hora_fin'])) ?></span>
-                        <form action="" method="POST" onsubmit="return confirm('¿Borrar?');"><input type="hidden" name="accion" value="eliminar"><input type="hidden" name="id" value="<?= $d['id'] ?>"><button class="btn btn-sm btn-outline-danger border-0"><i class="bi bi-trash fs-5"></i></button></form>
-                    </div>
-                    <h5 class="fw-bold"><?= htmlspecialchars($d['titulo']) ?></h5>
-                    <p class="text-muted small"><?= htmlspecialchars($d['descripcion']) ?></p>
-                    
-                    <h6 class="fw-bold mb-2 fs-6"><i class="bi bi-people-fill me-1"></i> Involucrados:</h6>
-                    <div class="d-flex flex-wrap gap-1">
-                        <?php 
-                        if ($d['lista_nombres']) {
-                            $involucrados = explode('||', $d['lista_nombres']);
-                            foreach ($involucrados as $inv) echo "<span class='badge bg-light text-dark border'>".htmlspecialchars($inv)."</span>";
-                        } else { echo "<span class='text-muted small'>Nadie asignado</span>"; }
-                        ?>
-                    </div>
+        <div class="agenda-row">
+            <div class="agenda-time">
+                <?= date('h:i A', strtotime($d['hora_inicio'])) ?>
+                <small>Hasta <?= date('h:i A', strtotime($d['hora_fin'])) ?></small>
+            </div>
+            <div class="agenda-card">
+                <div class="d-flex justify-content-between align-items-start">
+                    <h4 class="fw-bold mb-2 text-body"><?= htmlspecialchars($d['titulo']) ?></h4>
+                    <form action="" method="POST" onsubmit="return confirm('¿Borrar actividad?');"><input type="hidden" name="accion" value="eliminar"><input type="hidden" name="id" value="<?= $d['id'] ?>"><button class="btn btn-sm text-danger border-0 p-0 fs-5"><i class="bi bi-x-circle-fill"></i></button></form>
+                </div>
+                <p class="text-muted mb-3"><?= htmlspecialchars($d['descripcion']) ?: 'Sin descripción detallada.' ?></p>
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <i class="bi bi-people text-secondary"></i>
+                    <?php 
+                    if ($d['lista_nombres']) {
+                        foreach (explode('||', $d['lista_nombres']) as $inv) echo "<span class='badge bg-primary-subtle text-primary border rounded-pill'>$inv</span>";
+                    } else { echo "<span class='text-muted small'>Público General</span>"; }
+                    ?>
                 </div>
             </div>
         </div>
         <?php endforeach; ?>
     <?php else: ?>
-        <div class="col-12 alert alert-info text-center py-4">No hay actividades programadas.</div>
+        <div class="text-center py-5 opacity-50">
+            <img src="https://cdn-icons-png.flaticon.com/512/7486/7486747.png" width="100" class="mb-3">
+            <h4>Día Despejado</h4>
+            <p>No hay eventos registrados para esta fecha.</p>
+        </div>
     <?php endif; ?>
 </div>
 

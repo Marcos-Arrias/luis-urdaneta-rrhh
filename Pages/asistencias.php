@@ -59,54 +59,93 @@ foreach ($todo_personal_raw as $p) {
     $personal_agrupado[$p['tipo']][] = ['id' => $p['id'], 'nombre' => $p['nombre']];
 }
 
+$kpi_ausentes = 0; $kpi_retardos = 0; $kpi_justificados = 0;
+foreach($datos as $d) {
+    if($d['estado_asistencia'] == 'Ausente') $kpi_ausentes++;
+    if($d['estado_asistencia'] == 'Retardo') $kpi_retardos++;
+    if($d['estado_asistencia'] == 'Falta Justificada') $kpi_justificados++;
+}
 include '../Includes/header.php'; include '../Includes/sidebar.php';
 ?>
+<style>
+.pulse-badge { animation: pulse 2s infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(220, 53, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); } }
+.pulse-warning { animation: pulse-w 2s infinite; }
+@keyframes pulse-w { 0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(255, 193, 7, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); } }
+</style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Control de Asistencias</h2>
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalRegistro"><i class="bi bi-plus-circle me-2"></i>Registrar Novedad</button>
+    <div>
+        <h2 class="fw-bold mb-0"><i class="bi bi-person-bounding-box me-2 text-primary"></i> Control de Novedades</h2>
+        <p class="text-muted small mb-0">Gestión de inasistencias y llegadas tardías.</p>
+    </div>
+    <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold" data-bs-toggle="modal" data-bs-target="#modalRegistro"><i class="bi bi-plus-lg me-1"></i> Reportar Novedad</button>
 </div>
 
-<!-- Filtro de Fecha -->
-<form method="GET" class="mb-4 d-flex align-items-center bg-body-tertiary p-3 rounded shadow-sm">
-    <label class="me-3 fw-bold"><i class="bi bi-calendar3 me-2"></i>Ver registros del día:</label>
-    <input type="date" name="fecha_filtro" class="form-control w-auto me-2" value="<?= $fechaFiltro ?>">
-    <button type="submit" class="btn btn-secondary">Filtrar</button>
+<!-- KPIs SUPERIORES -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card border-0 bg-danger-subtle text-danger shadow-sm rounded-4 h-100">
+            <div class="card-body d-flex justify-content-between align-items-center p-4">
+                <div><h6 class="fw-bold mb-1">Ausencias Injustificadas</h6><h2 class="mb-0 fw-black"><?= $kpi_ausentes ?></h2></div><i class="bi bi-person-x-fill fs-1 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 bg-warning-subtle text-warning-emphasis shadow-sm rounded-4 h-100">
+            <div class="card-body d-flex justify-content-between align-items-center p-4">
+                <div><h6 class="fw-bold mb-1">Llegadas con Retardo</h6><h2 class="mb-0 fw-black"><?= $kpi_retardos ?></h2></div><i class="bi bi-clock-history fs-1 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 bg-info-subtle text-info-emphasis shadow-sm rounded-4 h-100">
+            <div class="card-body d-flex justify-content-between align-items-center p-4">
+                <div><h6 class="fw-bold mb-1">Faltas Justificadas</h6><h2 class="mb-0 fw-black"><?= $kpi_justificados ?></h2></div><i class="bi bi-file-medical-fill fs-1 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<form method="GET" class="mb-4 bg-body-tertiary p-2 rounded-pill shadow-sm d-inline-flex align-items-center border">
+    <i class="bi bi-calendar2-check ms-3 me-2 text-primary"></i>
+    <input type="date" name="fecha_filtro" class="form-control border-0 bg-transparent shadow-none" value="<?= $fechaFiltro ?>" style="width: 160px;">
+    <button class="btn btn-dark rounded-pill px-4">Actualizar Vista</button>
 </form>
 
-<div class="card shadow-sm border-0"><div class="card-body p-0"><div class="table-responsive">
-    <table class="table table-hover table-striped mb-0 align-middle">
-        <thead class="table-dark">
-            <tr><th class="ps-3">Fecha</th><th>Categoría</th><th>Personal</th><th>Estado</th><th>Motivo / Razón</th><th class="text-center">Acción</th></tr>
-        </thead>
-        <tbody>
-            <?php if (count($datos) > 0): ?>
-                <?php foreach ($datos as $d): ?>
-                <tr>
-                    <td class="ps-3 fw-bold"><?= date('d/m/Y', strtotime($d['fecha'])) ?></td>
-                    <td><span class="badge bg-secondary"><?= htmlspecialchars($d['tipo_personal'] ?? 'Desconocido') ?></span></td>
-                    <td><?= htmlspecialchars($d['apellidos'] . ', ' . $d['nombres']) ?></td>
-                    <td>
-                        <?php 
-                        $color = $d['estado_asistencia'] == 'Ausente' ? 'danger' : ($d['estado_asistencia'] == 'Retardo' ? 'warning text-dark' : 'info text-dark');
-                        echo "<span class='badge bg-$color'>{$d['estado_asistencia']}</span>";
-                        ?>
-                    </td>
-                    <td class="text-muted small"><?= htmlspecialchars($d['observaciones']) ?: 'Sin especificar' ?></td>
-                    <td class="text-center">
-                        <form action="" method="POST" class="d-inline" onsubmit="return confirm('¿Borrar registro?');">
-                            <input type="hidden" name="accion" value="eliminar"><input type="hidden" name="id" value="<?= $d['id'] ?>">
-                            <button class="btn btn-sm btn-danger"><i class="bi bi-trash"></i></button>
-                        </form>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            <?php else: ?>
-                <tr><td colspan="6" class="text-center text-muted py-4">Todos asistieron este día. No hay incidencias.</td></tr>
-            <?php endif; ?>
-        </tbody>
-    </table>
-</div></div></div>
+<div class="card shadow-sm border-0 rounded-4 overflow-hidden">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light text-secondary">
+                <tr><th class="ps-4">Fecha</th><th>Categoría</th><th>Trabajador Involucrado</th><th>Condición Reportada</th><th>Motivo / Razón</th><th class="text-center">Acción</th></tr>
+            </thead>
+            <tbody>
+                <?php if (count($datos) > 0): ?>
+                    <?php foreach ($datos as $d): ?>
+                    <tr>
+                        <td class="ps-4 fw-bold text-muted"><?= date('d/M/Y', strtotime($d['fecha'])) ?></td>
+                        <td><span class="badge bg-body-secondary text-body border rounded-pill"><?= htmlspecialchars($d['tipo_personal'] ?? 'Desconocido') ?></span></td>
+                        <td class="fw-bold"><?= htmlspecialchars($d['apellidos'] . ', ' . $d['nombres']) ?></td>
+                        <td>
+                            <?php 
+                            if($d['estado_asistencia'] == 'Ausente') echo "<span class='badge bg-danger pulse-badge rounded-pill px-3 py-2'><i class='bi bi-x-circle me-1'></i> AUSENTE</span>";
+                            elseif($d['estado_asistencia'] == 'Retardo') echo "<span class='badge bg-warning text-dark pulse-warning rounded-pill px-3 py-2'><i class='bi bi-clock me-1'></i> RETARDO</span>";
+                            else echo "<span class='badge bg-info text-dark rounded-pill px-3 py-2'><i class='bi bi-check-circle me-1'></i> JUSTIFICADO</span>";
+                            ?>
+                        </td>
+                        <td class="text-muted small"><i class="bi bi-quote opacity-50 me-1"></i><?= htmlspecialchars($d['observaciones']) ?: 'Sin observaciones registradas.' ?></td>
+                        <td class="text-center">
+                            <form action="" method="POST" onsubmit="return confirm('¿Deshacer este registro?');"><input type="hidden" name="accion" value="eliminar"><input type="hidden" name="id" value="<?= $d['id'] ?>"><button class="btn btn-sm btn-light text-danger shadow-sm rounded-circle"><i class="bi bi-trash"></i></button></form>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <tr><td colspan="6" class="text-center text-success py-5"><i class="bi bi-check2-all fs-1 d-block mb-3"></i><h5 class="fw-bold">Jornada Excelente</h5><p>Todo el personal asistió puntualmente este día.</p></td></tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
 
 <!-- Modal Registro -->
 <div class="modal fade" id="modalRegistro" tabindex="-1"><div class="modal-dialog"><div class="modal-content">

@@ -60,56 +60,70 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
 
 <!-- Se mantiene todo tu CSS original del calendario aquí -->
 <style>
-    .timetable { background-color: #fff; border-radius: 10px; overflow: hidden; border-collapse: separate; border-spacing: 0; }
-    .timetable th { background-color: #1e3c72; color: white; text-align: center; padding: 12px; font-size: 0.85rem; border: 1px solid #152b52; }
-    .timetable td { border: 1px solid #e9ecef; vertical-align: top; padding: 8px; min-width: 130px; }
-    .time-col { background-color: #f8f9fa; font-weight: bold; text-align: center; vertical-align: middle !important; min-width: 110px; font-size: 0.85rem; }
-    .event-block { border-radius: 6px; color: white; padding: 8px; cursor: pointer; position: relative; transition: all 0.3s ease; margin-bottom: 5px; }
-    .event-summary { text-align: center; font-weight: bold; font-size: 0.85rem; }
-    .event-details-hover { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; font-size: 0.75rem; opacity: 0.9; }
-    .event-block:hover { transform: scale(1.02); z-index: 10; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
-    .event-block:hover .event-details-hover { max-height: 200px; margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 8px; }
-    .truncate-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.schedule-grid { display: flex; overflow-x: auto; gap: 1rem; padding-bottom: 1rem; }
+.day-col { flex: 1; min-width: 250px; background: var(--bs-body-tertiary); border-radius: 1.2rem; padding: 1rem; border: 1px solid var(--bs-border-color); }
+.day-header { text-align: center; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px dashed var(--bs-border-color); }
+.shift-card { background: var(--bs-body-bg); border-radius: 1rem; padding: 1rem; margin-bottom: 1rem; border-left: 5px solid; box-shadow: 0 4px 15px rgba(0,0,0,0.05); cursor: pointer; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); position: relative; overflow: hidden; }
+.shift-card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+.shift-time { font-size: 0.8rem; font-weight: 700; color: var(--bs-secondary); display: flex; align-items: center; margin-bottom: 0.5rem; }
+.shift-title { font-weight: 800; font-size: 1.1rem; margin-bottom: 0.2rem; }
+.shift-count { position: absolute; right: 1rem; top: 1rem; background: var(--bs-primary-subtle); color: var(--bs-primary); font-weight: bold; border-radius: 50px; padding: 0.2rem 0.6rem; font-size: 0.8rem; }
+.bg-primary { border-left-color: #0d6efd !important; } .bg-success { border-left-color: #198754 !important; } .bg-danger { border-left-color: #dc3545 !important; } .bg-warning { border-left-color: #ffc107 !important; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="bi bi-calendar3-week me-2 text-primary"></i> Horario de Trabajo</h2>
-    <button class="btn btn-primary shadow-sm" data-bs-toggle="modal" data-bs-target="#modalTurno" onclick="limpiarFormularioTurno()"><i class="bi bi-plus-circle me-1"></i> Asignar Turno</button>
-</div>
-
-<div class="card shadow-lg border-0 mb-5">
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table mb-0 timetable">
-                <thead><tr><th>Intervalo</th><?php foreach($dias_semana as $d) echo "<th>$d</th>"; ?></tr></thead>
-                <tbody>
-                    <?php if (count($intervalos_unicos) > 0): foreach ($intervalos_unicos as $hora): ?>
-                        <tr>
-                            <td class="time-col"><?= str_replace(" - ", "<br>a<br>", $hora) ?></td>
-                            <?php foreach ($dias_semana as $dia): ?>
-                            <td>
-                                <?php if (isset($matriz[$hora][$dia])): $empleados = $matriz[$hora][$dia]; $total = count($empleados); ?>
-                                    <div class="event-block <?= $empleados[0]['color_fondo'] ?>" onclick='abrirModalGestion(<?= json_encode($empleados) ?>, "<?= $dia ?>", "<?= $hora ?>")'>
-                                        <div class="event-summary"><i class="bi bi-people-fill fs-5 d-block"></i><?= $total ?> Asignados</div>
-                                        <div class="event-details-hover">
-                                            <?php foreach ($empleados as $emp): ?>
-                                                <span class="truncate-text mb-1"><strong><?= htmlspecialchars($emp['apellidos']) ?></strong>: <?= htmlspecialchars($emp['actividad']) ?></span>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    </div>
-                                <?php endif; ?>
-                            </td>
-                            <?php endforeach; ?>
-                        </tr>
-                    <?php endforeach; else: ?>
-                        <tr><td colspan="8" class="text-center py-5 text-muted">El calendario está vacío.</td></tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
+    <div>
+        <h2 class="fw-bold mb-0"><i class="bi bi-calendar-week me-2 text-primary"></i> Horario Dinámico</h2>
+        <p class="text-muted small mb-0">Organización visual de turnos semanales.</p>
     </div>
+    <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold" data-bs-toggle="modal" data-bs-target="#modalTurno" onclick="limpiarFormularioTurno()">
+        <i class="bi bi-plus-lg me-1"></i> Asignar Turno
+    </button>
 </div>
 
+<div class="schedule-grid">
+    <?php foreach($dias_semana as $dia): ?>
+    <div class="day-col shadow-sm">
+        <div class="day-header <?= ($dia=='Sábado'||$dia=='Domingo')?'text-danger':'text-primary' ?>"><?= $dia ?></div>
+        
+        <?php 
+        $hay_turnos = false;
+        foreach ($intervalos_unicos as $hora): 
+            if (isset($matriz[$hora][$dia])): 
+                $hay_turnos = true;
+                $empleados = $matriz[$hora][$dia]; 
+                $total = count($empleados);
+                $color = $empleados[0]['color_fondo']; 
+        ?>
+            <div class="shift-card <?= $color ?>" onclick='abrirModalGestion(<?= json_encode($empleados) ?>, "<?= $dia ?>", "<?= $hora ?>")'>
+                <div class="shift-count"><i class="bi bi-people-fill"></i> <?= $total ?></div>
+                <div class="shift-time"><i class="bi bi-clock-fill me-1"></i> <?= str_replace("-", "<i class='bi bi-arrow-right mx-1'></i>", $hora) ?></div>
+                <div class="shift-title"><?= htmlspecialchars($empleados[0]['actividad']) ?></div>
+                
+                <div class="d-flex flex-wrap gap-1 mt-2">
+                    <?php 
+                    $mostrados = 0;
+                    foreach($empleados as $e) {
+                        if($mostrados < 3) echo '<span class="badge bg-secondary-subtle text-secondary border rounded-pill" style="font-size:0.7rem;">'.htmlspecialchars(explode(" ", $e['nombres'])[0]).'</span>';
+                        $mostrados++;
+                    }
+                    if($total > 3) echo '<span class="badge bg-light text-dark border rounded-pill">+'.($total-3).'</span>';
+                    ?>
+                </div>
+            </div>
+        <?php 
+            endif;
+        endforeach; 
+        if(!$hay_turnos): 
+        ?>
+            <div class="text-center p-4 opacity-50">
+                <i class="bi bi-cup-hot fs-1 d-block mb-2"></i>
+                <small class="fw-bold d-block">Día Libre</small>
+            </div>
+        <?php endif; ?>
+    </div>
+    <?php endforeach; ?>
+</div>
 <!-- Modal Principal para Crear/Editar -->
 <div class="modal fade" id="modalTurno" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
     <div class="modal-header bg-primary text-white"><h5 class="modal-title">Asignar Turno</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
