@@ -31,6 +31,39 @@
                 <div class="modal-footer p-2 border-0">
                     <button type="button" class="btn btn-success w-100 fw-bold" id="btnGuardarQuick" onclick="guardarCargoModal()">Guardar y Seleccionar</button>
                 </div>
+           </div> <!-- CIERRA EL container-fluid (CRÍTICO PARA LAS PESTAÑAS) -->
+        </div> <!-- CIERRA EL page-content-wrapper (CRÍTICO) -->
+    </div> <!-- CIERRA EL wrapper principal (CRÍTICO) -->
+
+    <!-- Carga de JS de Bootstrap -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="../JS/script.js?v=<?= time() ?>"></script>
+
+    <!-- MODAL BOOTSTRAP PARA AGREGAR CARGO RÁPIDO -->
+    <div class="modal fade" id="modalQuickAddCargo" tabindex="-1">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-success text-white">
+                    <h6 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Nueva Función / Cargo</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body bg-body">
+                    <input type="hidden" id="quick_tipo_id">
+                    <input type="hidden" id="quick_select_id">
+                    
+                    <div class="mb-3">
+                        <label class="form-label text-muted small fw-bold">Nombre de la Función:</label>
+                        <input type="text" id="quick_nombre_cargo" class="form-control form-control-sm" placeholder="Ej. Robótica" required>
+                    </div>
+                    
+                    <div class="mb-2">
+                        <label class="form-label text-muted small fw-bold">Descripción (Opcional):</label>
+                        <textarea id="quick_descripcion_cargo" class="form-control form-control-sm" rows="3" placeholder="Detalles para mostrar al pasar el cursor..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer p-2 border-0">
+                    <button type="button" class="btn btn-success w-100 fw-bold" id="btnGuardarQuick" onclick="guardarCargoModal()">Guardar en Catálogo</button>
+                </div>
             </div>
         </div>
     </div>
@@ -49,21 +82,25 @@
         if(colorMenu) colorMenu.value = colorGuardado;
         aplicarColorSidebar(colorGuardado);
 
-        const tableDensity = localStorage.getItem('tableDensity') || 'normal';
-        const selectTabla = document.getElementById('selectTableDensity');
-        if(selectTabla) selectTabla.value = tableDensity;
+        const tableDensity = localStorage.getItem('tableDensity') || '2';
+        const rangeTable = document.getElementById('rangeTableDensity');
+        if(rangeTable) rangeTable.value = tableDensity;
         aplicarDensidadTabla(tableDensity);
 
-        const fontSize = localStorage.getItem('fontSize') || 'normal';
-        const selectFont = document.getElementById('selectFontSize');
-        if(selectFont) selectFont.value = fontSize;
+        const fontSize = localStorage.getItem('fontSize') || '2';
+        const rangeFont = document.getElementById('rangeFontSize');
+        if(rangeFont) rangeFont.value = fontSize;
         aplicarFuenteGlobal(fontSize);
 
         const cardStyle = localStorage.getItem('cardStyle') || 'shadow';
-        const selectCard = document.getElementById('selectCardStyle');
-        if(selectCard) selectCard.value = cardStyle;
+        const radiosCard = document.getElementsByName('cardStyle');
+        if(radiosCard.length > 0) {
+            let selectedRadio = document.getElementById(cardStyle === 'shadow' ? 'styleShadow' : 'styleFlat');
+            if(selectedRadio) selectedRadio.checked = true;
+        }
         aplicarEstiloTarjetas(cardStyle);
 
+        // LISTENERS
         if(switchModo) switchModo.addEventListener('change', (e) => {
             let estado = e.target.checked ? 'activado' : 'desactivado';
             document.documentElement.setAttribute('data-bs-theme', estado === 'activado' ? 'dark' : 'light');
@@ -71,9 +108,12 @@
         });
 
         if(colorMenu) colorMenu.addEventListener('change', (e) => { localStorage.setItem('sidebarColor', e.target.value); aplicarColorSidebar(e.target.value); });
-        if(selectTabla) selectTabla.addEventListener('change', (e) => { localStorage.setItem('tableDensity', e.target.value); aplicarDensidadTabla(e.target.value); });
-        if(selectFont) selectFont.addEventListener('change', (e) => { localStorage.setItem('fontSize', e.target.value); aplicarFuenteGlobal(e.target.value); });
-        if(selectCard) selectCard.addEventListener('change', (e) => { localStorage.setItem('cardStyle', e.target.value); aplicarEstiloTarjetas(e.target.value); });
+        if(rangeTable) rangeTable.addEventListener('input', (e) => { localStorage.setItem('tableDensity', e.target.value); aplicarDensidadTabla(e.target.value); });
+        if(rangeFont) rangeFont.addEventListener('input', (e) => { localStorage.setItem('fontSize', e.target.value); aplicarFuenteGlobal(e.target.value); });
+        
+        radiosCard.forEach(radio => {
+            radio.addEventListener('change', (e) => { localStorage.setItem('cardStyle', e.target.value); aplicarEstiloTarjetas(e.target.value); });
+        });
     });
 
     function aplicarColorSidebar(tema) {
@@ -86,16 +126,24 @@
         else elemento.style.background = 'linear-gradient(180deg, #1e3c72 0%, #2a5298 100%)'; 
     }
 
-    function aplicarDensidadTabla(densidad) {
+    function aplicarDensidadTabla(valor) {
         document.querySelectorAll('.table').forEach(tabla => {
-            if(densidad === 'compact') { tabla.classList.add('table-sm'); tabla.style.fontSize = '0.85rem'; } 
-            else { tabla.classList.remove('table-sm'); tabla.style.fontSize = ''; }
+            tabla.classList.remove('table-sm');
+            tabla.style.fontSize = '';
+            tabla.querySelectorAll('th, td').forEach(c => c.style.padding = '');
+
+            if(valor === '1') { 
+                tabla.classList.add('table-sm'); 
+                tabla.style.fontSize = '0.85rem'; 
+            } else if(valor === '3') {
+                tabla.querySelectorAll('th, td').forEach(c => c.style.padding = '1.2rem 0.5rem');
+            }
         });
     }
 
-    function aplicarFuenteGlobal(tamano) {
-        if(tamano === 'small') document.body.style.fontSize = '0.85rem';
-        else if(tamano === 'large') document.body.style.fontSize = '1.1rem';
+    function aplicarFuenteGlobal(valor) {
+        if(valor === '1') document.body.style.fontSize = '0.85rem';
+        else if(valor === '3') document.body.style.fontSize = '1.1rem';
         else document.body.style.fontSize = '1rem';
     }
 
@@ -106,7 +154,6 @@
         });
     }
 
-    // Modal Rápido AJAX (Ahora con Descripción)
     function agregarCargoRapido(tipoPersonalId, selectId) {
         document.getElementById('quick_tipo_id').value = tipoPersonalId;
         document.getElementById('quick_select_id').value = selectId;
@@ -126,11 +173,7 @@
         btn.disabled = true; btn.innerHTML = 'Guardando...';
 
         try {
-            let formData = new FormData(); 
-            formData.append('nombre', nombre); 
-            formData.append('descripcion', descripcion); // Se envía la descripción
-            formData.append('tipo_personal_id', tipoId);
-            
+            let formData = new FormData(); formData.append('nombre', nombre); formData.append('descripcion', descripcion); formData.append('tipo_personal_id', tipoId);
             let response = await fetch('../PHP/ajax_agregar_cargo.php', { method: 'POST', body: formData });
             let data = await response.json();
 

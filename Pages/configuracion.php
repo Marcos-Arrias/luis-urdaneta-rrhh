@@ -76,16 +76,17 @@ include '../Includes/sidebar.php';
 
 <div class="tab-content" id="ajustesTabContent">
     
-    <!-- PESTAÑA 1: APARIENCIA -->
+   <!-- PESTAÑA 1: APARIENCIA (CON SLIDERS) -->
     <div class="tab-pane fade show active" id="apariencia">
         <div class="row">
+            
             <div class="col-md-4 mb-3">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-dark">
                     <div class="card-body text-center py-4">
-                        <i class="bi bi-moon-stars-fill fs-1 mb-2"></i>
+                        <i class="bi bi-moon-stars-fill fs-1 mb-2 text-dark"></i>
                         <h5 class="fw-bold">Tema Visual</h5>
                         <div class="form-check form-switch d-flex justify-content-center mt-3 fs-5">
-                            <input class="form-check-input me-2" type="checkbox" role="switch" id="switchModoOscuro">
+                            <input class="form-check-input me-2" type="checkbox" role="switch" id="switchModoOscuro" style="cursor:pointer;">
                             <label class="form-check-label" for="switchModoOscuro">Modo Oscuro</label>
                         </div>
                     </div>
@@ -97,8 +98,8 @@ include '../Includes/sidebar.php';
                     <div class="card-body text-center py-4">
                         <i class="bi bi-layout-sidebar-inset fs-1 mb-2 text-primary"></i>
                         <h5 class="fw-bold">Color del Menú</h5>
-                        <select id="selectMenuColor" class="form-select mt-3 shadow-sm">
-                            <option value="default">🔵 Azul Corporativo (Defecto)</option>
+                        <select id="selectMenuColor" class="form-select mt-3 shadow-sm border-0 bg-body-tertiary fw-bold">
+                            <option value="default">🔵 Azul Corporativo</option>
                             <option value="dark">⚫ Negro Carbón</option>
                             <option value="success">🟢 Verde Esmeralda</option>
                             <option value="danger">🔴 Rojo Carmesí</option>
@@ -108,47 +109,54 @@ include '../Includes/sidebar.php';
             </div>
 
             <div class="col-md-4 mb-3">
-                <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-secondary">
+                <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-warning">
                     <div class="card-body text-center py-4">
-                        <i class="bi bi-table fs-1 mb-2 text-secondary"></i>
-                        <h5 class="fw-bold">Densidad de Tablas</h5>
-                        <select id="selectTableDensity" class="form-select mt-3 shadow-sm">
-                            <option value="normal">Espaciosa (Defecto)</option>
-                            <option value="compact">Compacta (Más datos)</option>
-                        </select>
+                        <i class="bi bi-card-heading fs-1 mb-2 text-warning"></i>
+                        <h5 class="fw-bold">Estilo de Contenedores</h5>
+                        <div class="btn-group w-100 mt-3 shadow-sm" role="group">
+                            <input type="radio" class="btn-check" name="cardStyle" id="styleShadow" value="shadow" autocomplete="off" checked>
+                            <label class="btn btn-outline-secondary fw-bold" for="styleShadow">Relieve 3D</label>
+
+                            <input type="radio" class="btn-check" name="cardStyle" id="styleFlat" value="flat" autocomplete="off">
+                            <label class="btn btn-outline-secondary fw-bold" for="styleFlat">Plano 2D</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SLIDERS (RANGE INPUTS) -->
+            <div class="col-md-6 mb-3">
+                <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-secondary">
+                    <div class="card-body py-4">
+                        <div class="d-flex align-items-center mb-3">
+                            <i class="bi bi-table fs-2 me-3 text-secondary"></i>
+                            <div><h5 class="fw-bold mb-0">Densidad de Tablas</h5><small class="text-muted">Ajusta el espacio entre filas.</small></div>
+                        </div>
+                        <input type="range" class="form-range" id="rangeTableDensity" min="1" max="3" step="1">
+                        <div class="d-flex justify-content-between small fw-bold text-muted mt-1">
+                            <span>Compacta</span><span>Normal</span><span>Relajada</span>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div class="col-md-6 mb-3">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-info">
-                    <div class="card-body text-center py-4">
-                        <i class="bi bi-fonts fs-1 mb-2 text-info"></i>
-                        <h5 class="fw-bold">Tamaño de Fuente</h5>
-                        <select id="selectFontSize" class="form-select mt-3 shadow-sm">
-                            <option value="small">Pequeña</option>
-                            <option value="normal">Mediana (Estándar)</option>
-                            <option value="large">Grande (Accesibilidad)</option>
-                        </select>
+                    <div class="card-body py-4">
+                        <div class="d-flex align-items-center mb-3">
+                            <i class="bi bi-fonts fs-2 me-3 text-info"></i>
+                            <div><h5 class="fw-bold mb-0">Tamaño de Fuente</h5><small class="text-muted">Ajusta la lectura global.</small></div>
+                        </div>
+                        <input type="range" class="form-range" id="rangeFontSize" min="1" max="3" step="1">
+                        <div class="d-flex justify-content-between small fw-bold text-muted mt-1">
+                            <span>Pequeña</span><span>Estándar</span><span>Grande</span>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div class="col-md-6 mb-3">
-                <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-warning">
-                    <div class="card-body text-center py-4">
-                        <i class="bi bi-card-heading fs-1 mb-2 text-warning"></i>
-                        <h5 class="fw-bold">Estilo de Contenedores</h5>
-                        <select id="selectCardStyle" class="form-select mt-3 shadow-sm">
-                            <option value="shadow">Con Sombra (3D)</option>
-                            <option value="flat">Planas con Borde (2D)</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
-
     <!-- PESTAÑA 2: CARGOS -->
     <div class="tab-pane fade" id="cargos">
         <div class="card shadow-sm border-0 mb-4 bg-body-tertiary">
@@ -304,6 +312,17 @@ include '../Includes/sidebar.php';
                             <button onclick="descargarReporte('json')" class="btn btn-warning btn-sm w-100 mt-auto fw-bold"><i class="bi bi-download"></i> Respaldo JSON</button>
                         </div>
                     </div>
+                    
+                    <!-- ORGANIGRAMA PDF -->
+<div class="col-md-6 col-lg-3">
+    <div class="card text-center p-3 h-100 border-dark shadow-sm">
+        <i class="bi bi-diagram-3-fill text-dark fs-1 mb-2"></i>
+        <h6 class="fw-bold mb-1">Organigrama</h6>
+        <p class="small text-muted mb-3" style="font-size: 0.75rem;">Estructura jerárquica visual de la institución.</p>
+        <button onclick="window.location.href='organigrama.php'" class="btn btn-dark btn-sm w-100 mt-auto"><i class="bi bi-eye"></i> Ir al Editor</button>
+    </div>
+</div>
+
 
                 </div>
 

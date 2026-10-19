@@ -12,7 +12,7 @@ $tipoActual = $_GET['tipo'] ?? ''; // Para iluminar el menú correcto
         <a href="personal.php?tipo=1" class="menu-link <?= ($paginaActual == 'personal.php' && $tipoActual == '1') ? 'active' : ''; ?>"><i class="bi bi-book me-3"></i>Personal Docente</a>
         <a href="personal.php?tipo=2" class="menu-link <?= ($paginaActual == 'personal.php' && $tipoActual == '2') ? 'active' : ''; ?>"><i class="bi bi-pc-display me-3"></i>Personal Administrativo</a>
         <a href="personal.php?tipo=3" class="menu-link <?= ($paginaActual == 'personal.php' && $tipoActual == '3') ? 'active' : ''; ?>"><i class="bi bi-tools me-3"></i>Personal Obrero</a>
-        
+        <a href="organigrama.php" class="menu-link <?= ($paginaActual == 'organigrama.php') ? 'active' : ''; ?>"><i class="bi bi-diagram-3 me-3"></i>Organigrama</a>
         <a href="calendario.php" class="menu-link <?= ($paginaActual == 'calendario.php') ? 'active' : ''; ?>"><i class="bi bi-calendar3 me-3"></i>Calendario Laboral</a>
         <a href="asistencias.php" class="menu-link <?= ($paginaActual == 'asistencias.php') ? 'active' : ''; ?>"><i class="bi bi-person-x me-3"></i>Control Asistencias</a>
         <a href="cronograma.php" class="menu-link <?= ($paginaActual == 'cronograma.php') ? 'active' : ''; ?>"><i class="bi bi-calendar-event me-3"></i>Cronograma</a>
