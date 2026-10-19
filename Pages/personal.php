@@ -1,7 +1,7 @@
 <?php
 require_once '../PHP/connection.php';
 
-// Asegurar columnas y tablas requeridas
+// Asegurar columnas y tablas requeridas (Si no existen, se crean solas)
 $pdo->exec("CREATE TABLE IF NOT EXISTS personal_archivos_digitales (
   id INT AUTO_INCREMENT PRIMARY KEY, personal_id INT NOT NULL, codigo_archivo VARCHAR(100) NOT NULL UNIQUE,
   tipo_documento_clave CHAR(3) NOT NULL, numero_secuencia INT NOT NULL DEFAULT 1, nombre_original VARCHAR(150) NOT NULL,
@@ -19,6 +19,7 @@ $titulos = [
 ];
 $ui = $titulos[$tipo_id] ?? $titulos[1];
 
+// FUNCIÓN PARA GUARDAR IMÁGENES/DOCUMENTOS
 function guardarArchivoEnClave($pdo, $personal_id, $cedula, $file, $tipo_clave) {
     if (empty($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) return false;
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
@@ -43,6 +44,7 @@ function guardarArchivoEnClave($pdo, $personal_id, $cedula, $file, $tipo_clave) 
     return false;
 }
 
+// PROCESAMIENTO DE FORMULARIOS (CREAR, EDITAR, ELIMINAR)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $a = $_POST['accion'] ?? '';
     $nombre_completo = trim($_POST['nombres'] . ' ' . $_POST['apellidos']);
@@ -140,7 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// CONSULTA AVANZADA (Con extracción directa de Foto Carnet, Foto Cédula y Descripción de Cargo)
+// CONSULTA AVANZADA PRINCIPAL
 $datos = $pdo->prepare("
     SELECT p.*, 
            TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) as edad,
@@ -227,24 +229,24 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
                     <?php if (count($personal) > 0): ?>
                         <?php foreach ($personal as $d): ?>
                         <tr>
-                            <!-- 1. CÉDULA CON HOVER PREVIEW -->
-                            <td class="ps-3 fw-bold">
-                                <div class="popover-hover">
-                                    <span class="text-primary text-decoration-underline" style="cursor: help;">
-                                        <?= htmlspecialchars($d['cedula']) ?>
-                                    </span>
-                                    <div class="popover-content">
-                                        <div class="fw-bold text-center border-bottom pb-1 mb-2 small text-primary"><i class="bi bi-card-image me-1"></i> Cédula Digitalizada</div>
-                                        <?php if (!empty($d['ruta_foto_cedula'])): ?>
+                            <!-- 1. CÉDULA -->
+                            <td class="ps-3">
+                                <?php if (!empty($d['ruta_foto_cedula'])): ?>
+                                    <div class="popover-hover">
+                                        <span class="fw-bold text-primary text-decoration-underline" style="cursor: help;">
+                                            <?= htmlspecialchars($d['cedula']) ?>
+                                        </span>
+                                        <div class="popover-content">
+                                            <div class="fw-bold text-center border-bottom pb-1 mb-2 small text-primary"><i class="bi bi-card-image me-1"></i> Cédula Digitalizada</div>
                                             <img src="<?= $d['ruta_foto_cedula'] ?>" class="img-fluid rounded border shadow-sm" alt="Cédula">
-                                        <?php else: ?>
-                                            <div class="text-center text-muted small py-3"><i class="bi bi-file-earmark-x fs-2 d-block text-secondary"></i>Sin documento escaneado.</div>
-                                        <?php endif; ?>
+                                        </div>
                                     </div>
-                                </div>
+                                <?php else: ?>
+                                    <span class="fw-bold"><?= htmlspecialchars($d['cedula']) ?></span>
+                                <?php endif; ?>
                             </td>
 
-                            <!-- 2. NOMBRE CON AVATAR Y HOVER PREVIEW -->
+                            <!-- 2. NOMBRE (Avatar + Hover) -->
                             <td>
                                 <div class="popover-hover d-flex align-items-center">
                                     <?php if (!empty($d['ruta_foto_carnet'])): ?>
@@ -272,36 +274,40 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
                                 </div>
                             </td>
 
-                            <!-- 3. MATERIA CON HOVER PREVIEW DE DESCRIPCIÓN -->
+                            <!-- 3. MATERIA / CARGO -->
                             <td>
-                                <div class="popover-hover">
-                                    <span class="badge bg-secondary" style="cursor: help;">
-                                        <i class="bi bi-info-circle me-1"></i><?= htmlspecialchars($d['cargo_nombre']) ?>
-                                    </span>
-                                    <div class="popover-content">
-                                        <strong class="d-block small text-primary mb-1"><i class="bi bi-mortarboard me-1"></i> Información de Cátedra:</strong>
-                                        <p class="small text-muted mb-0"><?= htmlspecialchars($d['cargo_descripcion'] ?? 'Función asignada oficialmente según nómina del plantel.') ?></p>
+                                <?php if (!empty($d['cargo_descripcion'])): ?>
+                                    <div class="popover-hover">
+                                        <span class="badge bg-secondary" style="cursor: help;">
+                                            <i class="bi bi-info-circle me-1"></i><?= htmlspecialchars($d['cargo_nombre']) ?>
+                                        </span>
+                                        <div class="popover-content">
+                                            <strong class="d-block small text-primary mb-1"><i class="bi bi-mortarboard me-1"></i> Información de Cátedra:</strong>
+                                            <p class="small text-muted mb-0"><?= htmlspecialchars($d['cargo_descripcion']) ?></p>
+                                        </div>
                                     </div>
-                                </div>
+                                <?php else: ?>
+                                    <span class="badge bg-secondary"><?= htmlspecialchars($d['cargo_nombre']) ?></span>
+                                <?php endif; ?>
                             </td>
 
-                            <!-- 4. TELÉFONO CON DETECCIÓN Y HOVER DE WHATSAPP -->
+                            <!-- 4. TELÉFONO -->
                             <td>
-                                <div class="popover-hover">
-                                    <?= formatearTelefono($d['telefono']) ?>
-                                    <div class="popover-content" style="width: 220px;">
-                                        <div class="small fw-bold text-success mb-1"><i class="bi bi-whatsapp me-1"></i> Enlace WhatsApp Directo</div>
-                                        <?php if (!empty($d['telefono'])): ?>
+                                <?php if (!empty($d['telefono'])): ?>
+                                    <div class="popover-hover">
+                                        <?= formatearTelefono($d['telefono']) ?>
+                                        <div class="popover-content" style="width: 220px;">
+                                            <div class="small fw-bold text-success mb-1"><i class="bi bi-whatsapp me-1"></i> Enlace WhatsApp Directo</div>
                                             <?php $cleanTel = preg_replace('/[^0-9]/', '', $d['telefono']); ?>
                                             <p class="small text-muted mb-2">Canal de comunicación instantáneo listo.</p>
                                             <a href="https://wa.me/<?= $cleanTel ?>" target="_blank" class="btn btn-sm btn-success w-100 py-1" style="font-size: 0.75rem;">
                                                 <i class="bi bi-chat-dots me-1"></i> Abrir Chat Directo
                                             </a>
-                                        <?php else: ?>
-                                            <span class="text-muted small">No posee número móvil registrado.</span>
-                                        <?php endif; ?>
+                                        </div>
                                     </div>
-                                </div>
+                                <?php else: ?>
+                                    <span class="text-muted small">No registrado</span>
+                                <?php endif; ?>
                             </td>
 
                             <td class="text-center"><?= date('d/m/Y', strtotime($d['fecha_ingreso'])) ?></td>
@@ -340,7 +346,7 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
 </div>
 
 <!-- ========================================== -->
-<!-- OFFCANVAS (EXPEDIENTE MPPE + ARCHIVOS EN CLAVE) -->
+<!-- OFFCANVAS (EXPEDIENTE MPPE + ARCHIVOS) -->
 <!-- ========================================== -->
 <div class="offcanvas offcanvas-end shadow" tabindex="-1" id="panelDatosExtra" style="width: 480px;">
   <div class="offcanvas-header bg-primary text-white">
@@ -392,7 +398,7 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
 </div>
 
 <!-- ========================================== -->
-<!-- MODAL DE REGISTRO CON SUBIDA DE ARCHIVO EN CLAVE -->
+<!-- MODAL DE REGISTRO CON SUBIDA DE ARCHIVO -->
 <!-- ========================================== -->
 <div class="modal fade" id="modalRegistro" tabindex="-1">
     <div class="modal-dialog modal-xl">

@@ -179,3 +179,46 @@ function verDetallesExtra(btn) {
         console.error("Error al mostrar Offcanvas:", e);
     }
 }
+
+// ==========================================
+// 5. AGREGAR CARGO / MATERIA RÁPIDO (AJAX)
+// ==========================================
+function agregarCargoRapido(tipoPersonalId, selectId) {
+    document.getElementById('quick_tipo_id').value = tipoPersonalId;
+    document.getElementById('quick_select_id').value = selectId;
+    document.getElementById('quick_nombre_cargo').value = ''; 
+    document.getElementById('quick_descripcion_cargo').value = ''; 
+    new bootstrap.Modal(document.getElementById('modalQuickAddCargo')).show();
+}
+
+async function guardarCargoModal() {
+    let nombre = document.getElementById('quick_nombre_cargo').value.trim();
+    let descripcion = document.getElementById('quick_descripcion_cargo').value.trim();
+    let tipoId = document.getElementById('quick_tipo_id').value;
+    let selectId = document.getElementById('quick_select_id').value;
+    let btn = document.getElementById('btnGuardarQuick');
+
+    if (nombre === "") { alert("Por favor escriba un nombre."); return; }
+
+    btn.disabled = true; btn.innerHTML = 'Guardando...';
+
+    try {
+        let formData = new FormData();
+        formData.append('nombre', nombre);
+        formData.append('descripcion', descripcion); // Añadido
+        formData.append('tipo_personal_id', tipoId);
+
+        let response = await fetch('../PHP/ajax_agregar_cargo.php', { method: 'POST', body: formData });
+        let data = await response.json();
+
+        if (data.success) {
+            let select = document.getElementById(selectId);
+            let option = new Option(data.nombre, data.id);
+            select.add(option);
+            select.value = data.id; 
+            bootstrap.Modal.getInstance(document.getElementById('modalQuickAddCargo')).hide();
+        } else { alert("Error: " + data.error); }
+    } catch (error) { alert("Ocurrió un error de conexión."); }
+    
+    btn.disabled = false; btn.innerHTML = 'Guardar y Seleccionar';
+}
