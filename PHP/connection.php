@@ -1,6 +1,8 @@
 <?php
 // Evitar error de sesión si ya está iniciada
-if (session_status() == PHP_SESSION_NONE) { session_start(); }
+if (session_status() === PHP_SESSION_NONE) { 
+    session_start(); 
+}
 
 $host     = '127.0.0.1'; 
 $dbname   = 'crud'; 
@@ -9,20 +11,18 @@ $password = '';
 
 try {
     // 1. CONECTAR AL SERVIDOR MYSQL SIN SELECCIONAR BASE DE DATOS
-    // (Esto evita el error SQLSTATE[1049] en dispositivos nuevos)
     $pdo = new PDO("mysql:host=$host;charset=utf8mb4", $username, $password);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
     // 2. CREAR LA BASE DE DATOS 'crud' SI NO EXISTE Y POSICIONARSE EN ELLA
     $pdo->exec("CREATE DATABASE IF NOT EXISTS `$dbname` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-    $pdo->exec("USE `$dbname` shadow");
+    $pdo->exec("USE `$dbname`");
 
     // =========================================================================
     // 3. CREACIÓN ESTRUCTURAL DE TABLAS NORMALIZADAS (ORDEN ESTRICTO DE FK)
     // =========================================================================
     
-    // FASE 1: CATÁLOGOS BASE
     $pdo->exec("CREATE TABLE IF NOT EXISTS cat_tipos_personal (
         id INT AUTO_INCREMENT PRIMARY KEY, 
         nombre VARCHAR(50) NOT NULL UNIQUE
@@ -42,7 +42,6 @@ try {
         nivel_acceso INT NOT NULL DEFAULT 1
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-    // FASE 2: TABLA PRINCIPAL DE PERSONAL
     $pdo->exec("CREATE TABLE IF NOT EXISTS personal (
         id INT AUTO_INCREMENT PRIMARY KEY, 
         cedula VARCHAR(20) NOT NULL UNIQUE, 
@@ -54,7 +53,6 @@ try {
         fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-    // FASE 3: DATOS RELACIONALES Y ASIGNACIONES
     $pdo->exec("CREATE TABLE IF NOT EXISTS personal_cargos (
         id INT AUTO_INCREMENT PRIMARY KEY, 
         personal_id INT NOT NULL, 
@@ -73,7 +71,6 @@ try {
         FOREIGN KEY (personal_id) REFERENCES personal(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
     
-    // FASE 4: EXPEDIENTE MPPE COMPLETO Y ARCHIVOS CODIFICADOS
     $pdo->exec("CREATE TABLE IF NOT EXISTS personal_datos_adicionales (
         id INT AUTO_INCREMENT PRIMARY KEY, 
         personal_id INT NOT NULL UNIQUE, 
@@ -119,7 +116,6 @@ try {
         FOREIGN KEY (personal_id) REFERENCES personal(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-    // FASE 5: CONTROL MÓDULOS OPERATIVOS
     $pdo->exec("CREATE TABLE IF NOT EXISTS asistencias (
         id INT AUTO_INCREMENT PRIMARY KEY, 
         personal_id INT NOT NULL, 
@@ -167,7 +163,6 @@ try {
         fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-    // FASE 6: SEGURIDAD, SESIONES Y AUDITORÍA
     $pdo->exec("CREATE TABLE IF NOT EXISTS usuarios_sistema (
         id INT AUTO_INCREMENT PRIMARY KEY, 
         personal_id INT NULL, 
@@ -236,11 +231,19 @@ function registrarHistorial($pdo, $tabla, $accion_str, $descripcion, $registro_i
     
     $accion_enum = 'ACTUALIZAR';
     $str = strtoupper($accion_str);
-    if(strpos($str, 'CREA') !== false) $accion_enum = 'CREAR';
-    elseif(strpos($str, 'ELIM') !== false) $accion_enum = 'ELIMINAR';
-    elseif(strpos($str, 'LOGIN') !== false) $accion_enum = 'LOGIN';
-    elseif(strpos($str, 'CRITI') !== false) $accion_enum = 'ACCESO_CRITICO';
-    elseif(strpos($str, 'EXPOR') !== false) $accion_enum = 'EXPORTAR';
+    
+    // Bloques condicionales reescritos de forma más estricta
+    if (strpos($str, 'CREA') !== false) {
+        $accion_enum = 'CREAR';
+    } elseif (strpos($str, 'ELIM') !== false) {
+        $accion_enum = 'ELIMINAR';
+    } elseif (strpos($str, 'LOGIN') !== false) {
+        $accion_enum = 'LOGIN';
+    } elseif (strpos($str, 'CRITI') !== false) {
+        $accion_enum = 'ACCESO_CRITICO';
+    } elseif (strpos($str, 'EXPOR') !== false) {
+        $accion_enum = 'EXPORTAR';
+    }
 
     $stmt = $pdo->prepare("INSERT INTO historial_auditoria (usuario_id, tabla_afectada, registro_id, accion, descripcion_detallada, ip_origen) VALUES (?, ?, ?, ?, ?, ?)");
     $stmt->execute([$usuario_id, $tabla, $registro_id, $accion_enum, $descripcion, $ip]);
@@ -248,11 +251,20 @@ function registrarHistorial($pdo, $tabla, $accion_str, $descripcion, $registro_i
 
 function formatearTelefono($telefono) {
     $tel = trim($telefono);
-    if (empty($tel)) return '<span class="text-muted small">No registrado</span>';
+    
+    if (empty($tel)) {
+        return '<span class="text-muted small">No registrado</span>';
+    }
+    
     $bandera = '📱'; 
-    if (strpos($tel, '+58') === 0) { $bandera = '🇻🇪'; }
-    elseif (strpos($tel, '+57') === 0) { $bandera = '🇨🇴'; }
+    if (strpos($tel, '+58') === 0) { 
+        $bandera = '🇻🇪'; 
+    } elseif (strpos($tel, '+57') === 0) { 
+        $bandera = '🇨🇴'; 
+    }
+    
     $numeroLimpio = preg_replace('/[^0-9]/', '', $tel);
+    
     return '<a href="https://wa.me/' . $numeroLimpio . '" target="_blank" class="text-decoration-none text-body fw-medium"><span class="me-1 fs-5">' . $bandera . '</span>' . htmlspecialchars($tel) . '</a>';
 }
 ?>
