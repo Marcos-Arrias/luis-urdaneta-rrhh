@@ -1,6 +1,158 @@
 <?php
 require_once '../PHP/connection.php';
 
+// ==========================================
+// 1. PROCESAMIENTO DEL FORMULARIO (POST)
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $accion = $_POST['accion'] ?? '';
+    $id = $_POST['id'] ?? null;
+    $tipo_actual = $_GET['tipo'] ?? 1;
+
+    try {
+        $pdo->beginTransaction();
+
+        if ($accion === 'crear' || $accion === 'editar') {
+            // Datos Básicos
+            $cedula = trim($_POST['cedula']);
+            $nombres = trim($_POST['nombres']);
+            $apellidos = trim($_POST['apellidos']);
+            $fecha_ingreso = $_POST['fecha_ingreso'];
+            $estado_laboral = $_POST['estado_laboral'] ?? 'Activo';
+            $fecha_nacimiento = !empty($_POST['fecha_nacimiento']) ? $_POST['fecha_nacimiento'] : null;
+            $cargo_area_id = $_POST['cargo_area_id'];
+            $telefono = trim($_POST['telefono'] ?? '');
+
+            if ($accion === 'crear') {
+                // A. Insertar en tabla principal
+                $stmt = $pdo->prepare("INSERT INTO personal (cedula, nombres, apellidos, fecha_nacimiento, fecha_ingreso, estado_laboral) VALUES (?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$cedula, $nombres, $apellidos, $fecha_nacimiento, $fecha_ingreso, $estado_laboral]);
+                $personal_id = $pdo->lastInsertId();
+
+                // B. Asignar Cargo Relacional
+                $pdo->prepare("INSERT INTO personal_cargos (personal_id, cargo_area_id, fecha_asignacion) VALUES (?, ?, ?)")->execute([$personal_id, $cargo_area_id, $fecha_ingreso]);
+
+                // C. Guardar Teléfono
+                if (!empty($telefono)) {
+                    $pdo->prepare("INSERT INTO personal_contactos (personal_id, tipo_contacto, valor) VALUES (?, 'Teléfono Personal', ?)")->execute([$personal_id, $telefono]);
+                }
+
+                registrarHistorial($pdo, 'Personal', 'CREAR', "Registró al trabajador C.I: $cedula");
+
+            } elseif ($accion === 'editar') {
+                $personal_id = $id;
+                
+                // A. Actualizar tabla principal
+                $stmt = $pdo->prepare("UPDATE personal SET cedula=?, nombres=?, apellidos=?, fecha_nacimiento=?, fecha_ingreso=?, estado_laboral=? WHERE id=?");
+                $stmt->execute([$cedula, $nombres, $apellidos, $fecha_nacimiento, $fecha_ingreso, $estado_laboral, $personal_id]);
+
+                // B. Actualizar Cargo (Mantiene el id del cargo actual)
+                $pdo->prepare("UPDATE personal_cargos SET cargo_area_id=? WHERE personal_id=? AND estado_cargo='Vigente'")->execute([$cargo_area_id, $personal_id]);
+
+                // C. Actualizar Teléfono
+                $pdo->prepare("DELETE FROM personal_contactos WHERE personal_id=? AND tipo_contacto='Teléfono Personal'")->execute([$personal_id]);
+                if (!empty($telefono)) {
+                    $pdo->prepare("INSERT INTO personal_contactos (personal_id, tipo_contacto, valor) VALUES (?, 'Teléfono Personal', ?)")->execute([$personal_id, $telefono]);
+                }
+
+                registrarHistorial($pdo, 'Personal', 'ACTUALIZAR', "Actualizó al trabajador C.I: $cedula");
+            }
+
+            // D. Guardar TODOS los Datos Adicionales (MPPE, Salud, Tallas, Banco)
+            // Se usa "ON DUPLICATE KEY UPDATE" para que funcione tanto al Crear como al Editar
+            $stmtExtra = $pdo->prepare("
+                INSERT INTO personal_datos_adicionales (
+                    personal_id, estado_civil, cantidad_hijos, etnia, fecha_ingreso_mppe, dependencia, codigo_dependencia,
+                    turno, nivel_academico, correo_electronico, banco_nomina, cuenta_bancaria, cargo_nominal, codigo_cargo,
+                    horas_laborales, direccion_habitacion, municipio, parroquia, centro_votacion, patologias, medicamentos_permanentes,
+                    tipo_sangre, alergias_medicas, condiciones_especiales, talla_camisa, talla_pantalon, talla_calzado
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    estado_civil=VALUES(estado_civil), cantidad_hijos=VALUES(cantidad_hijos), etnia=VALUES(etnia), fecha_ingreso_mppe=VALUES(fecha_ingreso_mppe),
+                    dependencia=VALUES(dependencia), codigo_dependencia=VALUES(codigo_dependencia), turno=VALUES(turno), nivel_academico=VALUES(nivel_academico),
+                    correo_electronico=VALUES(correo_electronico), banco_nomina=VALUES(banco_nomina), cuenta_bancaria=VALUES(cuenta_bancaria), cargo_nominal=VALUES(cargo_nominal),
+                    codigo_cargo=VALUES(codigo_cargo), horas_laborales=VALUES(horas_laborales), direccion_habitacion=VALUES(direccion_habitacion), municipio=VALUES(municipio),
+                    parroquia=VALUES(parroquia), centro_votacion=VALUES(centro_votacion), patologias=VALUES(patologias), medicamentos_permanentes=VALUES(medicamentos_permanentes),
+                    tipo_sangre=VALUES(tipo_sangre), alergias_medicas=VALUES(alergias_medicas), condiciones_especiales=VALUES(condiciones_especiales),
+                    talla_camisa=VALUES(talla_camisa), talla_pantalon=VALUES(talla_pantalon), talla_calzado=VALUES(talla_calzado)
+            ");
+
+            $stmtExtra->execute([
+                $personal_id,
+                $_POST['estado_civil'] ?? 'Soltero/a',
+                intval($_POST['cantidad_hijos'] ?? 0),
+                $_POST['etnia'] ?? null,
+                !empty($_POST['fecha_ingreso_mppe']) ? $_POST['fecha_ingreso_mppe'] : null,
+                $_POST['dependencia'] ?? null,
+                $_POST['codigo_dependencia'] ?? null,
+                $_POST['turno'] ?? 'Mañana',
+                $_POST['nivel_academico'] ?? null,
+                $_POST['correo_electronico'] ?? null,
+                $_POST['banco_nomina'] ?? null,
+                $_POST['cuenta_bancaria'] ?? null,
+                $_POST['cargo_nominal'] ?? null,
+                $_POST['codigo_cargo'] ?? null,
+                intval($_POST['horas_laborales'] ?? 0),
+                $_POST['direccion_habitacion'] ?? null,
+                $_POST['municipio'] ?? null,
+                $_POST['parroquia'] ?? null,
+                $_POST['centro_votacion'] ?? null,
+                $_POST['patologias'] ?? null,
+                $_POST['medicamentos_permanentes'] ?? null,
+                $_POST['tipo_sangre'] ?? null,
+                $_POST['alergias_medicas'] ?? null,
+                $_POST['condiciones_especiales'] ?? null,
+                $_POST['talla_camisa'] ?? null,
+                $_POST['talla_pantalon'] ?? null,
+                $_POST['talla_calzado'] ?? null
+            ]);
+
+            // E. Manejo de Subida de Archivo (Si el usuario adjuntó uno en el modal)
+            if (isset($_FILES['archivo_expediente']) && $_FILES['archivo_expediente']['error'] === UPLOAD_ERR_OK) {
+                $tipo_clave = $_POST['tipo_archivo_clave'] ?? 'OTR';
+                $directorio = '../documentos/';
+                if (!file_exists($directorio)) { mkdir($directorio, 0777, true); }
+
+                $ext = strtolower(pathinfo($_FILES['archivo_expediente']['name'], PATHINFO_EXTENSION));
+
+                // Buscar correlativo
+                $stmtS = $pdo->prepare("SELECT MAX(numero_secuencia) FROM personal_archivos_digitales WHERE personal_id = ? AND tipo_documento_clave = ?");
+                $stmtS->execute([$personal_id, $tipo_clave]);
+                $secuencia = intval($stmtS->fetchColumn()) + 1;
+
+                $cedula_limpia = preg_replace('/[^0-9]/', '', $cedula);
+                $nombre_codigo = sprintf("V%s_%d_%s_%02d.%s", $cedula_limpia, $personal_id, $tipo_clave, $secuencia, $ext);
+                $rutaFinal = $directorio . $nombre_codigo;
+
+                if (move_uploaded_file($_FILES['archivo_expediente']['tmp_name'], $rutaFinal)) {
+                    $pdo->prepare("INSERT INTO personal_archivos_digitales (personal_id, codigo_archivo, tipo_documento_clave, numero_secuencia, nombre_original, ruta_archivo, mime_type) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                        ->execute([$personal_id, $nombre_codigo, $tipo_clave, $secuencia, $_FILES['archivo_expediente']['name'], $rutaFinal, $_FILES['archivo_expediente']['type']]);
+                }
+            }
+
+        } elseif ($accion === 'eliminar') {
+            // El DELETE CASCADE borrará los datos adicionales, cargos y archivos de BD
+            $pdo->prepare("DELETE FROM personal WHERE id=?")->execute([$id]);
+            registrarHistorial($pdo, 'Personal', 'ELIMINAR', "Eliminó registro de personal.");
+        }
+
+        $pdo->commit();
+        header("Location: personal.php?tipo=" . $tipo_actual); 
+        exit;
+
+    } catch (PDOException $e) {
+        $pdo->rollBack();
+        if ($e->getCode() == 23000) {
+            die("<script>alert('Error: La cédula ya está registrada en el sistema.'); window.history.back();</script>");
+        } else {
+            die("Error DB: " . $e->getMessage());
+        }
+    }
+}
+
+// ==========================================
+// 2. CONFIGURACIÓN DE UI (TÍTULOS)
+// ==========================================
 $tipo_id = isset($_GET['tipo']) ? intval($_GET['tipo']) : 1;
 $filtro_cargo = isset($_GET['cargo']) ? intval($_GET['cargo']) : null;
 
@@ -10,9 +162,6 @@ $titulos = [
     3 => ['titulo' => 'Personal Obrero', 'icono' => 'bi-tools', 'btn' => 'Nuevo Obrero', 'etiqueta' => 'Área de Mantenimiento']
 ];
 $ui = $titulos[$tipo_id] ?? $titulos[1];
-
-// La lógica POST de Crear/Editar/Eliminar se mantiene intacta aquí...
-// (Imagina que aquí está tu bloque if ($_SERVER['REQUEST_METHOD'] === 'POST') idéntico al anterior para no alargar el código)
 
 // ==========================================
 // CONSULTA DINÁMICA (CON O SIN FILTRO DE CARGO)
@@ -60,14 +209,43 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
 ?>
 
 <style>
-.popover-hover { position: relative; display: inline-block; }
-.popover-content { display: none; position: absolute; z-index: 1060; left: 105%; top: -15px; width: 260px; background-color: var(--bs-body-bg); color: var(--bs-body-color); border: 1px solid var(--bs-border-color); border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.25); padding: 12px; pointer-events: none; }
+/* Contenedor relativo */
+.popover-hover { position: relative; }
+
+/* Tarjeta flotante con la foto ampliada */
+.popover-content { 
+    display: none; 
+    position: absolute; 
+    z-index: 9999 !important; /* Altísimo para que nada lo tape */
+    left: 70px;  /* Lo mueve a la derecha de la foto pequeña */
+    top: -40px;  /* Lo centra verticalmente */
+    width: 220px; 
+    background-color: var(--bs-body-bg); 
+    color: var(--bs-body-color); 
+    border: 1px solid var(--bs-border-color); 
+    border-radius: 12px; 
+    box-shadow: 0 15px 35px rgba(0,0,0,0.5); /* Sombra fuerte para darle relieve 3D */
+    padding: 15px; 
+    pointer-events: none; 
+}
+
+/* Color específico para que se vea elegante en MODO OSCURO */
+[data-bs-theme="dark"] .popover-content {
+    background-color: #2b3035;
+    border-color: #495057;
+}
+
+/* Animaciones y Hover */
 .popover-hover:hover .popover-content { display: block; animation: fadeIn 0.2s ease-out; }
-@keyframes fadeIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateX(-15px); } to { opacity: 1; transform: translateX(0); } }
+
+/* Foto redonda pequeña */
 .avatar-thumb { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid var(--bs-primary); transition: transform 0.2s; }
 .popover-hover:hover .avatar-thumb { transform: scale(1.1); }
-.badge-interactive:hover { background-color: var(--bs-primary) !important; color: white !important; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
+
+/* Botones interactivos (cargos) */
 .badge-interactive { transition: all 0.2s ease; cursor: pointer; display: inline-flex; align-items: center; }
+.badge-interactive:hover { background-color: var(--bs-primary) !important; color: white !important; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -84,7 +262,7 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
     </div>
 <?php endif; ?>
 
-<div class="card shadow-sm border-0 rounded-4 overflow-hidden">
+<div class="card shadow-sm border-0 rounded-4">
     <div class="table-responsive" style="overflow: visible;">
         <table class="table table-hover mb-0 align-middle">
             <thead class="table-light text-secondary">

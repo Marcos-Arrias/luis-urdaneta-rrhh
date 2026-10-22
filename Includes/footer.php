@@ -1,48 +1,17 @@
-</div> <!-- Cierra el container-fluid de tu página -->
+</div> <!-- Cierra el container-fluid -->
         </div> <!-- Cierra el page-content-wrapper -->
     </div> <!-- Cierra el wrapper principal -->
 
     <!-- Carga de JS de Bootstrap -->
-    <script src="../CSS/bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js"></script>
-    <script src="../JS/script.js?v=<?= time() ?>"></script>
-
-<!-- MODAL BOOTSTRAP PARA AGREGAR CARGO RÁPIDO -->
-    <div class="modal fade" id="modalQuickAddCargo" tabindex="-1">
-        <div class="modal-dialog modal-sm modal-dialog-centered">
-            <div class="modal-content border-0 shadow-lg">
-                <div class="modal-header bg-success text-white">
-                    <h6 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Nuevo Cargo/Materia</h6>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body bg-body">
-                    <input type="hidden" id="quick_tipo_id">
-                    <input type="hidden" id="quick_select_id">
-                    
-                    <div class="mb-3">
-                        <label class="form-label text-muted small fw-bold">Nombre de la Función:</label>
-                        <input type="text" id="quick_nombre_cargo" class="form-control form-control-sm" placeholder="Ej. Robótica" required>
-                    </div>
-                    
-                    <div class="mb-2">
-                        <label class="form-label text-muted small fw-bold">Descripción (Opcional):</label>
-                        <textarea id="quick_descripcion_cargo" class="form-control form-control-sm" rows="3" placeholder="Detalles para mostrar al pasar el cursor..."></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer p-2 border-0">
-                    <button type="button" class="btn btn-success w-100 fw-bold" id="btnGuardarQuick" onclick="guardarCargoModal()">Guardar y Seleccionar</button>
-                </div>
-           </div> <!-- CIERRA EL container-fluid (CRÍTICO PARA LAS PESTAÑAS) -->
-        </div> <!-- CIERRA EL page-content-wrapper (CRÍTICO) -->
-    </div> <!-- CIERRA EL wrapper principal (CRÍTICO) -->
-
-    <!-- Carga de JS de Bootstrap -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Archivo JS Global con Cache Busting para evitar errores de navegador -->
     <script src="../JS/script.js?v=<?= time() ?>"></script>
 
-    <!-- MODAL BOOTSTRAP PARA AGREGAR CARGO RÁPIDO -->
-    <div class="modal fade" id="modalQuickAddCargo" tabindex="-1">
+    <!-- MODAL BOOTSTRAP PARA AGREGAR CARGO RÁPIDO (REPARADO: SIN tabindex="-1") -->
+    <div class="modal fade shadow-lg" id="modalQuickAddCargo" data-bs-backdrop="static">
         <div class="modal-dialog modal-sm modal-dialog-centered">
-            <div class="modal-content border-0 shadow-lg">
+            <div class="modal-content border-0">
                 <div class="modal-header bg-success text-white">
                     <h6 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Nueva Función / Cargo</h6>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -53,12 +22,13 @@
                     
                     <div class="mb-3">
                         <label class="form-label text-muted small fw-bold">Nombre de la Función:</label>
+                        <!-- Ahora sí podrás escribir aquí sin bloqueos -->
                         <input type="text" id="quick_nombre_cargo" class="form-control form-control-sm" placeholder="Ej. Robótica" required>
                     </div>
                     
                     <div class="mb-2">
                         <label class="form-label text-muted small fw-bold">Descripción (Opcional):</label>
-                        <textarea id="quick_descripcion_cargo" class="form-control form-control-sm" rows="3" placeholder="Detalles para mostrar al pasar el cursor..."></textarea>
+                        <textarea id="quick_descripcion_cargo" class="form-control form-control-sm" rows="3" placeholder="Detalles de la cátedra..."></textarea>
                     </div>
                 </div>
                 <div class="modal-footer p-2 border-0">
@@ -68,7 +38,7 @@
         </div>
     </div>
 
-    <!-- SCRIPT DE AJUSTES GLOBALES DE APARIENCIA Y MODALES -->
+    <!-- SCRIPT DE AJUSTES GLOBALES DE APARIENCIA -->
     <script>
     document.addEventListener("DOMContentLoaded", () => {
         const switchModo = document.getElementById('switchModoOscuro');
@@ -152,39 +122,6 @@
             if(estilo === 'flat') { card.classList.remove('shadow-sm', 'shadow', 'shadow-lg'); card.classList.add('border'); } 
             else { card.classList.add('shadow-sm'); card.classList.remove('border'); }
         });
-    }
-
-    function agregarCargoRapido(tipoPersonalId, selectId) {
-        document.getElementById('quick_tipo_id').value = tipoPersonalId;
-        document.getElementById('quick_select_id').value = selectId;
-        document.getElementById('quick_nombre_cargo').value = ''; 
-        document.getElementById('quick_descripcion_cargo').value = ''; 
-        new bootstrap.Modal(document.getElementById('modalQuickAddCargo')).show();
-    }
-
-    async function guardarCargoModal() {
-        let nombre = document.getElementById('quick_nombre_cargo').value.trim();
-        let descripcion = document.getElementById('quick_descripcion_cargo').value.trim();
-        let tipoId = document.getElementById('quick_tipo_id').value;
-        let selectId = document.getElementById('quick_select_id').value;
-        let btn = document.getElementById('btnGuardarQuick');
-
-        if (nombre === "") { alert("Por favor escriba un nombre."); return; }
-        btn.disabled = true; btn.innerHTML = 'Guardando...';
-
-        try {
-            let formData = new FormData(); formData.append('nombre', nombre); formData.append('descripcion', descripcion); formData.append('tipo_personal_id', tipoId);
-            let response = await fetch('../PHP/ajax_agregar_cargo.php', { method: 'POST', body: formData });
-            let data = await response.json();
-
-            if (data.success) {
-                let select = document.getElementById(selectId);
-                select.add(new Option(data.nombre, data.id));
-                select.value = data.id; 
-                bootstrap.Modal.getInstance(document.getElementById('modalQuickAddCargo')).hide();
-            } else { alert("Error: " + data.error); }
-        } catch (error) { alert("Ocurrió un error de conexión."); }
-        btn.disabled = false; btn.innerHTML = 'Guardar y Seleccionar';
     }
     </script>
 </body>
