@@ -20,6 +20,13 @@ try {
     $pdo->exec("USE `$dbname`");
 
     // =========================================================================
+    // LIMPIEZA DE TABLAS OBSOLETAS (Para evitar conflictos con versiones viejas)
+    // =========================================================================
+    $pdo->exec("DROP TABLE IF EXISTS personal_documentos");
+    $pdo->exec("DROP TABLE IF EXISTS configuracion_organigrama");
+    $pdo->exec("DROP TABLE IF EXISTS personal_permisos_reposos");
+
+    // =========================================================================
     // 3. CREACIÓN ESTRUCTURAL DE TABLAS NORMALIZADAS (ORDEN ESTRICTO DE FK)
     // =========================================================================
     
@@ -76,30 +83,30 @@ try {
         personal_id INT NOT NULL UNIQUE, 
         estado_civil ENUM('Soltero/a', 'Casado/a', 'Divorciado/a', 'Viudo/a', 'Concubinato') DEFAULT 'Soltero/a', 
         cantidad_hijos INT DEFAULT 0, 
-        etnia VARCHAR(50) DEFAULT NULL,
-        fecha_ingreso_mppe DATE DEFAULT NULL,
-        dependencia VARCHAR(100) DEFAULT NULL,
-        codigo_dependencia VARCHAR(50) DEFAULT NULL,
-        turno ENUM('Mañana', 'Tarde', 'Completo', 'Integral', 'Nocturno') DEFAULT 'Mañana',
         nivel_academico VARCHAR(100) DEFAULT NULL, 
-        correo_electronico VARCHAR(120) DEFAULT NULL,
-        banco_nomina VARCHAR(50) DEFAULT NULL, 
-        cuenta_bancaria VARCHAR(30) DEFAULT NULL, 
-        cargo_nominal VARCHAR(100) DEFAULT NULL,
-        codigo_cargo VARCHAR(50) DEFAULT NULL,
-        horas_laborales INT DEFAULT 0,
-        direccion_habitacion TEXT DEFAULT NULL,
-        municipio VARCHAR(80) DEFAULT NULL,
-        parroquia VARCHAR(80) DEFAULT NULL,
-        centro_votacion VARCHAR(150) DEFAULT NULL,
-        patologias TEXT DEFAULT NULL,
-        medicamentos_permanentes TEXT DEFAULT NULL,
         tipo_sangre VARCHAR(5) DEFAULT NULL, 
         alergias_medicas TEXT DEFAULT NULL, 
         condiciones_especiales TEXT DEFAULT NULL, 
         talla_camisa VARCHAR(10) DEFAULT NULL, 
         talla_pantalon VARCHAR(10) DEFAULT NULL, 
         talla_calzado VARCHAR(10) DEFAULT NULL, 
+        banco_nomina VARCHAR(50) DEFAULT NULL, 
+        cuenta_bancaria VARCHAR(30) DEFAULT NULL, 
+        etnia VARCHAR(50) DEFAULT NULL,
+        fecha_ingreso_mppe DATE DEFAULT NULL,
+        dependencia VARCHAR(100) DEFAULT NULL,
+        codigo_dependencia VARCHAR(50) DEFAULT NULL,
+        turno ENUM('Mañana', 'Tarde', 'Completo', 'Integral', 'Nocturno') DEFAULT 'Mañana',
+        cargo_nominal VARCHAR(100) DEFAULT NULL,
+        codigo_cargo VARCHAR(50) DEFAULT NULL,
+        horas_laborales INT DEFAULT 0,
+        correo_electronico VARCHAR(120) DEFAULT NULL,
+        direccion_habitacion TEXT DEFAULT NULL,
+        municipio VARCHAR(80) DEFAULT NULL,
+        parroquia VARCHAR(80) DEFAULT NULL,
+        centro_votacion VARCHAR(150) DEFAULT NULL,
+        patologias TEXT DEFAULT NULL,
+        medicamentos_permanentes TEXT DEFAULT NULL,
         FOREIGN KEY (personal_id) REFERENCES personal(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
@@ -232,7 +239,7 @@ function registrarHistorial($pdo, $tabla, $accion_str, $descripcion, $registro_i
     $accion_enum = 'ACTUALIZAR';
     $str = strtoupper($accion_str);
     
-    // Bloques condicionales reescritos de forma más estricta
+    // Asignación estricta al ENUM
     if (strpos($str, 'CREA') !== false) {
         $accion_enum = 'CREAR';
     } elseif (strpos($str, 'ELIM') !== false) {
