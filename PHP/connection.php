@@ -170,6 +170,16 @@ try {
         fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
+     $pdo->exec("CREATE TABLE IF NOT EXISTS `organigrama_jerarquia` (
+  `personal_id` int(11) NOT NULL,
+  `jefe_id` int(11) DEFAULT NULL,
+  PRIMARY KEY (`personal_id`),
+  KEY `jefe_id` (`jefe_id`),
+  CONSTRAINT `organigrama_fk_personal` FOREIGN KEY (`personal_id`) REFERENCES `personal` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `organigrama_fk_jefe` FOREIGN KEY (`jefe_id`) REFERENCES `personal` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+
     $pdo->exec("CREATE TABLE IF NOT EXISTS usuarios_sistema (
         id INT AUTO_INCREMENT PRIMARY KEY, 
         personal_id INT NULL, 
