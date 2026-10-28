@@ -104,9 +104,13 @@ include '../Includes/sidebar.php';
     #tree-container { width: 100%; height: 750px; background-color: var(--bs-body-tertiary); border-radius: 1rem; border: 1px solid var(--bs-border-color); position: relative; overflow: hidden;}
     #tree { width: 100%; height: 100%; }
     
+    /* Adaptación del gráfico y buscador al modo oscuro */
     [data-bs-theme="dark"] .boc-light rect { fill: #2b3035 !important; stroke: #495057 !important; }
     [data-bs-theme="dark"] .boc-light text { fill: #f8f9fa !important; }
+    [data-bs-theme="dark"] .boc-search { background-color: #2b3035 !important; border-color: #495057 !important; color: white !important; }
+    [data-bs-theme="dark"] .boc-search input { color: white !important; }
     
+    /* Ocultar botones y menús en inglés por defecto */
     .boc-edit-form, .edit-form, div[data-balkan-orgchart-edit-form], .boc-edit-button, .boc-add-button, .node-menu { display: none !important; opacity: 0 !important; visibility: hidden !important; }
     
     /* Cursor para indicar que las ventanas se pueden arrastrar */
@@ -187,7 +191,6 @@ include '../Includes/sidebar.php';
                 </div>
                 
                 <div class="accordion shadow-sm" id="accordionDetalles">
-                    <!-- Basic -->
                     <div class="accordion-item">
                         <h2 class="accordion-header"><button class="accordion-button fw-bold py-2" type="button" data-bs-toggle="collapse" data-bs-target="#col1">Datos Principales</button></h2>
                         <div id="col1" class="accordion-collapse collapse show" data-bs-parent="#accordionDetalles">
@@ -199,7 +202,6 @@ include '../Includes/sidebar.php';
                             </div>
                         </div>
                     </div>
-                    <!-- Extra -->
                     <div class="accordion-item">
                         <h2 class="accordion-header"><button class="accordion-button collapsed fw-bold py-2" type="button" data-bs-toggle="collapse" data-bs-target="#col2">Información Adicional</button></h2>
                         <div id="col2" class="accordion-collapse collapse" data-bs-parent="#accordionDetalles">
@@ -213,7 +215,6 @@ include '../Includes/sidebar.php';
                         </div>
                     </div>
                 </div>
-
             </div>
             <div class="modal-footer p-2 bg-light">
                 <button type="button" class="btn btn-secondary w-100 fw-bold" data-bs-dismiss="modal">Cerrar Ficha</button>
@@ -281,8 +282,17 @@ include '../Includes/sidebar.php';
     const dataTree = <?= $jerarquia_actual ?>;
     const todosEmpleados = <?= $personal_json ?>;
 
+    // TRADUCCIÓN DEL BUSCADOR
+    OrgChart.SEARCH_PLACEHOLDER = "🔍 Buscar empleado (Nombre, Cargo o Cédula)...";
+
     let chart = new OrgChart(document.getElementById("tree"), {
         template: "luba",
+        
+        // ¡LA MAGIA PARA ARREGLAR LA LÍNEA RECTA! (Agrupa a los subornidados en cuadrícula)
+        layout: OrgChart.mixed, 
+        
+        enableSearch: true,
+        searchFields: ["name", "title", "cedula"],
         enableDragDrop: true,
         mouseScrool: OrgChart.action.zoom,
         toolbar: { zoom: true, fit: true },
@@ -333,7 +343,6 @@ include '../Includes/sidebar.php';
                 let selectJefe = document.getElementById('selectNuevoJefe');
                 selectJefe.innerHTML = '<option value="">Ninguno (Máxima Autoridad)</option>';
                 
-                // REPARACIÓN DEL UNDEFINED: Usar Object.values y validar propiedades reales
                 Object.values(chart.nodes).forEach(n => {
                     if (n.id && n.name && n.id != id) {
                         let option = new Option(n.name + ' (' + n.title + ')', n.id);
@@ -344,7 +353,6 @@ include '../Includes/sidebar.php';
                 new bootstrap.Modal(document.getElementById('modalEditPosition')).show();
             } 
             else if (accion === 'redirigir_crud') {
-                // REDIRECCIÓN A PERSONAL CON PARÁMETRO DE AUTO-EDICIÓN
                 window.location.href = `personal.php?tipo=${node.tipo_personal}&auto_edit=${node.id}`;
             }
             else if (accion === 'eliminar') {
@@ -464,7 +472,6 @@ include '../Includes/sidebar.php';
             });
         }
     });
-
 </script>
 
 <?php include '../Includes/footer.php'; ?>
