@@ -140,7 +140,8 @@ $sql = "
            (SELECT ruta_archivo FROM personal_archivos_digitales WHERE personal_id = p.id AND tipo_documento_clave = 'CED' ORDER BY id DESC LIMIT 1) as ruta_foto_cedula,
            (SELECT GROUP_CONCAT(CONCAT(tipo_documento_clave, '::', codigo_archivo, '::', ruta_archivo) SEPARATOR '||') 
             FROM personal_archivos_digitales WHERE personal_id = p.id) as galeria_archivos,
-           pda.*
+           pda.*,
+           p.id -- ¡LA SOLUCIÓN! Forzamos a que el ID real del personal sea el último en leerse
     FROM personal p 
     INNER JOIN personal_cargos pc ON p.id = pc.personal_id AND pc.estado_cargo = 'Vigente'
     INNER JOIN cat_cargos_areas c ON pc.cargo_area_id = c.id 
@@ -165,9 +166,9 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
 
 <style>
 /* CSS del Popover, Hover y Checkboxes */
-.popover-hover { position: relative; }
 .popover-content { display: none; position: absolute; z-index: 9999 !important; left: 70px; top: -40px; width: 220px; background-color: var(--bs-body-bg); color: var(--bs-body-color); border: 1px solid var(--bs-border-color); border-radius: 12px; box-shadow: 0 15px 35px rgba(0,0,0,0.5); padding: 15px; pointer-events: none; }
-[data-bs-theme="dark"] .popover-content { background-color: #2b3035; border-color: #495057; }
+[data-bs-theme="dark"] .popover-content { background-color: #212529 !important; border-color: #495057 !important; color: #ffffff !important; }
+[data-bs-theme="dark"] .popover-content span, [data-bs-theme="dark"] .popover-content strong { color: #ffffff !important; }
 .popover-hover:hover .popover-content { display: block; animation: fadeIn 0.2s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateX(-15px); } to { opacity: 1; transform: translateX(0); } }
 .avatar-thumb { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid var(--bs-primary); transition: transform 0.2s; }
@@ -675,12 +676,44 @@ function drop(e) {
 document.addEventListener("DOMContentLoaded", () => {
     const urlParams = new URLSearchParams(window.location.search);
     const autoEditId = urlParams.get('auto_edit');
+    
     if (autoEditId) {
+        console.log("Intentando auto-editar trabajador con ID:", autoEditId);
+        
+        let targetBtn = null;
         let botonesEdicion = document.querySelectorAll('button[onclick="editarRegistro(this)"]');
+        
+        // Buscar el botón exacto del trabajador
         for (let btn of botonesEdicion) {
-            let data = JSON.parse(btn.getAttribute('data-empleado'));
-            if (data.id == autoEditId) { setTimeout(() => { btn.click(); }, 500); break; }
+            try {
+                let data = JSON.parse(btn.getAttribute('data-empleado'));
+                if (data.id == autoEditId) { 
+                    targetBtn = btn;
+                    break;
+                }
+            } catch (e) {
+                console.error("Error leyendo datos del botón", e);
+            }
         }
+
+        if (targetBtn) {
+            console.log("Trabajador encontrado. Llenando datos y abriendo modal...");
+            
+            // 1. Llenar los datos en el formulario
+            editarRegistro(targetBtn);
+            
+            // 2. Usar el método más seguro de Bootstrap 5 para forzar la apertura
+            setTimeout(() => {
+                let modalDOM = document.getElementById('modalRegistro');
+                let modalInstancia = bootstrap.Modal.getOrCreateInstance(modalDOM);
+                modalInstancia.show();
+            }, 300); // 300ms es el tiempo ideal para que el DOM se asiente
+            
+        } else {
+            console.warn("El trabajador con ID " + autoEditId + " no se encuentra en esta tabla.");
+        }
+        
+        // Limpiamos la URL para no repetir el proceso al recargar
         window.history.replaceState(null, '', window.location.pathname + '?tipo=' + urlParams.get('tipo'));
     }
 });

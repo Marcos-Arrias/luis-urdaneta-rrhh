@@ -104,19 +104,23 @@ include '../Includes/sidebar.php';
     #tree-container { width: 100%; height: 750px; background-color: var(--bs-body-tertiary); border-radius: 1rem; border: 1px solid var(--bs-border-color); position: relative; overflow: hidden;}
     #tree { width: 100%; height: 100%; }
     
-    /* Adaptación del gráfico y buscador al modo oscuro */
-    [data-bs-theme="dark"] .boc-light rect { fill: #2b3035 !important; stroke: #495057 !important; }
-    [data-bs-theme="dark"] .boc-light text { fill: #f8f9fa !important; }
-    [data-bs-theme="dark"] .boc-search { background-color: #2b3035 !important; border-color: #495057 !important; color: white !important; }
-    [data-bs-theme="dark"] .boc-search input { color: white !important; }
+    /* ADAPTACIÓN PROFUNDA AL MODO OSCURO PARA ORGCHART */
+    [data-bs-theme="dark"] .boc-light rect { fill: #212529 !important; stroke: #495057 !important; }
+    [data-bs-theme="dark"] .boc-light text { fill: #ffffff !important; } /* Fuerza las letras a blanco */
+    [data-bs-theme="dark"] .node rect { fill: #212529 !important; }
+    [data-bs-theme="dark"] .node text { fill: #ffffff !important; }
     
-    /* Ocultar botones y menús en inglés por defecto */
+    /* Buscador en modo oscuro */
+    [data-bs-theme="dark"] .boc-search { background-color: #212529 !important; border-color: #495057 !important; }
+    [data-bs-theme="dark"] .boc-search input { color: #ffffff !important; background-color: #212529 !important; }
+    
+    /* Ocultar botones por defecto de la librería */
     .boc-edit-form, .edit-form, div[data-balkan-orgchart-edit-form], .boc-edit-button, .boc-add-button, .node-menu { display: none !important; opacity: 0 !important; visibility: hidden !important; }
     
-    /* Cursor para indicar que las ventanas se pueden arrastrar */
+    /* Cursor para indicar que las ventanas modales se pueden arrastrar */
     .modal-header { cursor: move; }
 
-    /* Hacer que el texto de las ventanas modales no se pueda seleccionar (sombrear de azul) */
+    /* Inseleccionable */
     .modal-content { user-select: none; -webkit-user-select: none; -moz-user-select: none; }
 </style>
 
