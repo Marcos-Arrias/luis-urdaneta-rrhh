@@ -12,8 +12,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->beginTransaction();
 
-        if ($accion === 'crear' || $accion === 'editar') {
-            // Datos Básicos
+        // -------------------------------------------
+        // A. ACCIONES MASIVAS (MULTIPLES SUJETOS)
+        // -------------------------------------------
+        if ($accion === 'bulk_delete' && !empty($_POST['bulk_ids'])) {
+            $ids = explode(',', $_POST['bulk_ids']);
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $pdo->prepare("DELETE FROM personal WHERE id IN ($placeholders)")->execute($ids);
+            registrarHistorial($pdo, 'Personal', 'ELIMINAR', "Eliminación masiva de " . count($ids) . " registros.");
+        } 
+        elseif ($accion === 'bulk_move' && !empty($_POST['bulk_ids']) && !empty($_POST['nuevo_cargo_id'])) {
+            $ids = explode(',', $_POST['bulk_ids']);
+            $nuevo_cargo = $_POST['nuevo_cargo_id'];
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            
+            // Se actualiza el cargo vigente de todos los seleccionados
+            $params = array_merge([$nuevo_cargo], $ids);
+            $pdo->prepare("UPDATE personal_cargos SET cargo_area_id = ? WHERE personal_id IN ($placeholders) AND estado_cargo='Vigente'")->execute($params);
+            registrarHistorial($pdo, 'Personal', 'ACTUALIZAR', "Cambio de cargo masivo a " . count($ids) . " trabajadores.");
+        }
+        // -------------------------------------------
+        // B. CREAR O EDITAR INDIVIDUAL
+        // -------------------------------------------
+        elseif ($accion === 'crear' || $accion === 'editar') {
             $cedula = trim($_POST['cedula']);
             $nombres = trim($_POST['nombres']);
             $apellidos = trim($_POST['apellidos']);
@@ -24,42 +45,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $telefono = trim($_POST['telefono'] ?? '');
 
             if ($accion === 'crear') {
-                // A. Insertar en tabla principal
                 $stmt = $pdo->prepare("INSERT INTO personal (cedula, nombres, apellidos, fecha_nacimiento, fecha_ingreso, estado_laboral) VALUES (?, ?, ?, ?, ?, ?)");
                 $stmt->execute([$cedula, $nombres, $apellidos, $fecha_nacimiento, $fecha_ingreso, $estado_laboral]);
                 $personal_id = $pdo->lastInsertId();
 
-                // B. Asignar Cargo Relacional
                 $pdo->prepare("INSERT INTO personal_cargos (personal_id, cargo_area_id, fecha_asignacion) VALUES (?, ?, ?)")->execute([$personal_id, $cargo_area_id, $fecha_ingreso]);
 
-                // C. Guardar Teléfono
-                if (!empty($telefono)) {
-                    $pdo->prepare("INSERT INTO personal_contactos (personal_id, tipo_contacto, valor) VALUES (?, 'Teléfono Personal', ?)")->execute([$personal_id, $telefono]);
-                }
-
+                if (!empty($telefono)) $pdo->prepare("INSERT INTO personal_contactos (personal_id, tipo_contacto, valor) VALUES (?, 'Teléfono Personal', ?)")->execute([$personal_id, $telefono]);
                 registrarHistorial($pdo, 'Personal', 'CREAR', "Registró al trabajador C.I: $cedula");
 
             } elseif ($accion === 'editar') {
                 $personal_id = $id;
-                
-                // A. Actualizar tabla principal
-                $stmt = $pdo->prepare("UPDATE personal SET cedula=?, nombres=?, apellidos=?, fecha_nacimiento=?, fecha_ingreso=?, estado_laboral=? WHERE id=?");
-                $stmt->execute([$cedula, $nombres, $apellidos, $fecha_nacimiento, $fecha_ingreso, $estado_laboral, $personal_id]);
-
-                // B. Actualizar Cargo (Mantiene el id del cargo actual)
+                $pdo->prepare("UPDATE personal SET cedula=?, nombres=?, apellidos=?, fecha_nacimiento=?, fecha_ingreso=?, estado_laboral=? WHERE id=?")->execute([$cedula, $nombres, $apellidos, $fecha_nacimiento, $fecha_ingreso, $estado_laboral, $personal_id]);
                 $pdo->prepare("UPDATE personal_cargos SET cargo_area_id=? WHERE personal_id=? AND estado_cargo='Vigente'")->execute([$cargo_area_id, $personal_id]);
-
-                // C. Actualizar Teléfono
+                
                 $pdo->prepare("DELETE FROM personal_contactos WHERE personal_id=? AND tipo_contacto='Teléfono Personal'")->execute([$personal_id]);
-                if (!empty($telefono)) {
-                    $pdo->prepare("INSERT INTO personal_contactos (personal_id, tipo_contacto, valor) VALUES (?, 'Teléfono Personal', ?)")->execute([$personal_id, $telefono]);
-                }
-
+                if (!empty($telefono)) $pdo->prepare("INSERT INTO personal_contactos (personal_id, tipo_contacto, valor) VALUES (?, 'Teléfono Personal', ?)")->execute([$personal_id, $telefono]);
                 registrarHistorial($pdo, 'Personal', 'ACTUALIZAR', "Actualizó al trabajador C.I: $cedula");
             }
 
-            // D. Guardar TODOS los Datos Adicionales (MPPE, Salud, Tallas, Banco)
-            // Se usa "ON DUPLICATE KEY UPDATE" para que funcione tanto al Crear como al Editar
+            // Guardar Datos Extra
             $stmtExtra = $pdo->prepare("
                 INSERT INTO personal_datos_adicionales (
                     personal_id, estado_civil, cantidad_hijos, etnia, fecha_ingreso_mppe, dependencia, codigo_dependencia,
@@ -76,64 +81,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     tipo_sangre=VALUES(tipo_sangre), alergias_medicas=VALUES(alergias_medicas), condiciones_especiales=VALUES(condiciones_especiales),
                     talla_camisa=VALUES(talla_camisa), talla_pantalon=VALUES(talla_pantalon), talla_calzado=VALUES(talla_calzado)
             ");
+            $stmtExtra->execute([$personal_id, $_POST['estado_civil']??'Soltero/a', intval($_POST['cantidad_hijos']??0), $_POST['etnia']??null, !empty($_POST['fecha_ingreso_mppe'])?$_POST['fecha_ingreso_mppe']:null, $_POST['dependencia']??null, $_POST['codigo_dependencia']??null, $_POST['turno']??'Mañana', $_POST['nivel_academico']??null, $_POST['correo_electronico']??null, $_POST['banco_nomina']??null, $_POST['cuenta_bancaria']??null, $_POST['cargo_nominal']??null, $_POST['codigo_cargo']??null, intval($_POST['horas_laborales']??0), $_POST['direccion_habitacion']??null, $_POST['municipio']??null, $_POST['parroquia']??null, $_POST['centro_votacion']??null, $_POST['patologias']??null, $_POST['medicamentos_permanentes']??null, $_POST['tipo_sangre']??null, $_POST['alergias_medicas']??null, $_POST['condiciones_especiales']??null, $_POST['talla_camisa']??null, $_POST['talla_pantalon']??null, $_POST['talla_calzado']??null]);
 
-            $stmtExtra->execute([
-                $personal_id,
-                $_POST['estado_civil'] ?? 'Soltero/a',
-                intval($_POST['cantidad_hijos'] ?? 0),
-                $_POST['etnia'] ?? null,
-                !empty($_POST['fecha_ingreso_mppe']) ? $_POST['fecha_ingreso_mppe'] : null,
-                $_POST['dependencia'] ?? null,
-                $_POST['codigo_dependencia'] ?? null,
-                $_POST['turno'] ?? 'Mañana',
-                $_POST['nivel_academico'] ?? null,
-                $_POST['correo_electronico'] ?? null,
-                $_POST['banco_nomina'] ?? null,
-                $_POST['cuenta_bancaria'] ?? null,
-                $_POST['cargo_nominal'] ?? null,
-                $_POST['codigo_cargo'] ?? null,
-                intval($_POST['horas_laborales'] ?? 0),
-                $_POST['direccion_habitacion'] ?? null,
-                $_POST['municipio'] ?? null,
-                $_POST['parroquia'] ?? null,
-                $_POST['centro_votacion'] ?? null,
-                $_POST['patologias'] ?? null,
-                $_POST['medicamentos_permanentes'] ?? null,
-                $_POST['tipo_sangre'] ?? null,
-                $_POST['alergias_medicas'] ?? null,
-                $_POST['condiciones_especiales'] ?? null,
-                $_POST['talla_camisa'] ?? null,
-                $_POST['talla_pantalon'] ?? null,
-                $_POST['talla_calzado'] ?? null
-            ]);
-
-            // E. Manejo de Subida de Archivo (Si el usuario adjuntó uno en el modal)
+            // Archivo Digitalizado
             if (isset($_FILES['archivo_expediente']) && $_FILES['archivo_expediente']['error'] === UPLOAD_ERR_OK) {
                 $tipo_clave = $_POST['tipo_archivo_clave'] ?? 'OTR';
                 $directorio = '../documentos/';
-                if (!file_exists($directorio)) { mkdir($directorio, 0777, true); }
-
+                if (!file_exists($directorio)) mkdir($directorio, 0777, true);
                 $ext = strtolower(pathinfo($_FILES['archivo_expediente']['name'], PATHINFO_EXTENSION));
-
-                // Buscar correlativo
                 $stmtS = $pdo->prepare("SELECT MAX(numero_secuencia) FROM personal_archivos_digitales WHERE personal_id = ? AND tipo_documento_clave = ?");
                 $stmtS->execute([$personal_id, $tipo_clave]);
                 $secuencia = intval($stmtS->fetchColumn()) + 1;
-
                 $cedula_limpia = preg_replace('/[^0-9]/', '', $cedula);
                 $nombre_codigo = sprintf("V%s_%d_%s_%02d.%s", $cedula_limpia, $personal_id, $tipo_clave, $secuencia, $ext);
                 $rutaFinal = $directorio . $nombre_codigo;
 
                 if (move_uploaded_file($_FILES['archivo_expediente']['tmp_name'], $rutaFinal)) {
-                    $pdo->prepare("INSERT INTO personal_archivos_digitales (personal_id, codigo_archivo, tipo_documento_clave, numero_secuencia, nombre_original, ruta_archivo, mime_type) VALUES (?, ?, ?, ?, ?, ?, ?)")
-                        ->execute([$personal_id, $nombre_codigo, $tipo_clave, $secuencia, $_FILES['archivo_expediente']['name'], $rutaFinal, $_FILES['archivo_expediente']['type']]);
+                    $pdo->prepare("INSERT INTO personal_archivos_digitales (personal_id, codigo_archivo, tipo_documento_clave, numero_secuencia, nombre_original, ruta_archivo, mime_type) VALUES (?, ?, ?, ?, ?, ?, ?)")->execute([$personal_id, $nombre_codigo, $tipo_clave, $secuencia, $_FILES['archivo_expediente']['name'], $rutaFinal, $_FILES['archivo_expediente']['type']]);
                 }
             }
-
-        } elseif ($accion === 'eliminar') {
-            // El DELETE CASCADE borrará los datos adicionales, cargos y archivos de BD
+        } 
+        elseif ($accion === 'eliminar') {
             $pdo->prepare("DELETE FROM personal WHERE id=?")->execute([$id]);
-            registrarHistorial($pdo, 'Personal', 'ELIMINAR', "Eliminó registro de personal.");
+            registrarHistorial($pdo, 'Personal', 'ELIMINAR', "Eliminó registro de personal individual.");
         }
 
         $pdo->commit();
@@ -142,16 +112,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     } catch (PDOException $e) {
         $pdo->rollBack();
-        if ($e->getCode() == 23000) {
-            die("<script>alert('Error: La cédula ya está registrada en el sistema.'); window.history.back();</script>");
-        } else {
-            die("Error DB: " . $e->getMessage());
-        }
+        if ($e->getCode() == 23000) die("<script>alert('Error: La cédula ya existe o conflicto de datos.'); window.history.back();</script>");
+        else die("Error DB: " . $e->getMessage());
     }
 }
 
 // ==========================================
-// 2. CONFIGURACIÓN DE UI (TÍTULOS)
+// 2. UI CONFIG & QUERIES
 // ==========================================
 $tipo_id = isset($_GET['tipo']) ? intval($_GET['tipo']) : 1;
 $filtro_cargo = isset($_GET['cargo']) ? intval($_GET['cargo']) : null;
@@ -163,9 +130,6 @@ $titulos = [
 ];
 $ui = $titulos[$tipo_id] ?? $titulos[1];
 
-// ==========================================
-// CONSULTA DINÁMICA (CON O SIN FILTRO DE CARGO)
-// ==========================================
 $sql = "
     SELECT p.*, 
            TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) as edad,
@@ -183,7 +147,6 @@ $sql = "
     LEFT JOIN personal_datos_adicionales pda ON p.id = pda.personal_id
     WHERE c.tipo_personal_id = :tipo 
 ";
-
 if ($filtro_cargo) { $sql .= " AND c.id = :cargo "; }
 $sql .= " ORDER BY p.apellidos ASC";
 
@@ -193,14 +156,6 @@ if ($filtro_cargo) { $datos->bindParam(':cargo', $filtro_cargo, PDO::PARAM_INT);
 $datos->execute();
 $personal = $datos->fetchAll();
 
-// Obtener nombre del cargo filtrado para el banner
-$nombre_filtro = "";
-if ($filtro_cargo) {
-    $stmtF = $pdo->prepare("SELECT nombre FROM cat_cargos_areas WHERE id = ?");
-    $stmtF->execute([$filtro_cargo]);
-    $nombre_filtro = $stmtF->fetchColumn();
-}
-
 $lista_cargos = $pdo->prepare("SELECT id, nombre FROM cat_cargos_areas WHERE tipo_personal_id = ? ORDER BY nombre ASC");
 $lista_cargos->execute([$tipo_id]);
 $lista_cargos = $lista_cargos->fetchAll();
@@ -209,43 +164,38 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
 ?>
 
 <style>
-/* Contenedor relativo */
+/* CSS del Popover, Hover y Checkboxes */
 .popover-hover { position: relative; }
-
-/* Tarjeta flotante con la foto ampliada */
-.popover-content { 
-    display: none; 
-    position: absolute; 
-    z-index: 9999 !important; /* Altísimo para que nada lo tape */
-    left: 70px;  /* Lo mueve a la derecha de la foto pequeña */
-    top: -40px;  /* Lo centra verticalmente */
-    width: 220px; 
-    background-color: var(--bs-body-bg); 
-    color: var(--bs-body-color); 
-    border: 1px solid var(--bs-border-color); 
-    border-radius: 12px; 
-    box-shadow: 0 15px 35px rgba(0,0,0,0.5); /* Sombra fuerte para darle relieve 3D */
-    padding: 15px; 
-    pointer-events: none; 
-}
-
-/* Color específico para que se vea elegante en MODO OSCURO */
-[data-bs-theme="dark"] .popover-content {
-    background-color: #2b3035;
-    border-color: #495057;
-}
-
-/* Animaciones y Hover */
+.popover-content { display: none; position: absolute; z-index: 9999 !important; left: 70px; top: -40px; width: 220px; background-color: var(--bs-body-bg); color: var(--bs-body-color); border: 1px solid var(--bs-border-color); border-radius: 12px; box-shadow: 0 15px 35px rgba(0,0,0,0.5); padding: 15px; pointer-events: none; }
+[data-bs-theme="dark"] .popover-content { background-color: #2b3035; border-color: #495057; }
 .popover-hover:hover .popover-content { display: block; animation: fadeIn 0.2s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateX(-15px); } to { opacity: 1; transform: translateX(0); } }
-
-/* Foto redonda pequeña */
 .avatar-thumb { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid var(--bs-primary); transition: transform 0.2s; }
 .popover-hover:hover .avatar-thumb { transform: scale(1.1); }
-
-/* Botones interactivos (cargos) */
 .badge-interactive { transition: all 0.2s ease; cursor: pointer; display: inline-flex; align-items: center; }
 .badge-interactive:hover { background-color: var(--bs-primary) !important; color: white !important; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
+
+/* ESTILOS PARA ORDENAR Y ARRASTRAR COLUMNAS */
+th.sortable { cursor: pointer; user-select: none; position: relative; padding-right: 20px !important; }
+th.sortable:hover { background-color: rgba(0,0,0,0.05); }
+th.sortable::after { content: '↕'; position: absolute; right: 8px; opacity: 0.3; }
+th.sortable.asc::after { content: '↑'; opacity: 1; color: var(--bs-primary); }
+th.sortable.desc::after { content: '↓'; opacity: 1; color: var(--bs-primary); }
+th[draggable="true"] { cursor: grab; }
+th[draggable="true"]:active { cursor: grabbing; }
+
+/* TR COLOR SELECCIONADO */
+tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
+
+/* BARRA FLOTANTE (BULK ACTIONS) */
+#bulk-toolbar {
+    position: fixed; bottom: -100px; left: 50%; transform: translateX(-50%);
+    background-color: var(--bs-dark); color: white; border-radius: 50px;
+    padding: 12px 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    z-index: 1050; display: flex; align-items: center; gap: 15px;
+    transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+#bulk-toolbar.show { bottom: 30px; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -255,38 +205,37 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
     </button>
 </div>
 
-<?php if ($filtro_cargo && $nombre_filtro): ?>
-    <div class="alert alert-primary shadow-sm border-0 d-flex justify-content-between align-items-center rounded-4 mb-4">
-        <div><i class="bi bi-funnel-fill me-2 fs-5"></i> Mostrando personal asignado a: <strong><?= htmlspecialchars($nombre_filtro) ?></strong></div>
-        <a href="personal.php?tipo=<?= $tipo_id ?>" class="btn btn-sm btn-outline-primary rounded-pill">Ver todos</a>
-    </div>
-<?php endif; ?>
-
 <div class="card shadow-sm border-0 rounded-4">
     <div class="table-responsive" style="overflow: visible;">
-        <table class="table table-hover mb-0 align-middle">
+        <!-- TABLA CON COLUMNAS ARRASTRABLES (DRAGGABLE) Y ORDENABLES (SORTABLE) -->
+        <table class="table table-hover mb-0 align-middle" id="tablaPersonal">
             <thead class="table-light text-secondary">
                 <tr>
-                    <th class="ps-4">Cédula</th>
-                    <th>Apellidos y Nombres</th>
-                    <th><?= $ui['etiqueta'] ?></th>
-                    <th>Contacto</th>
-                    <th class="text-center">F. Ingreso</th>
-                    <th class="text-center">Estado</th>
+                    <th style="width: 40px;" class="text-center">
+                        <input class="form-check-input border-secondary" type="checkbox" id="checkAll" onclick="toggleAll(this)">
+                    </th>
+                    <th class="ps-4 sortable" draggable="true" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="drop(event)">Cédula</th>
+                    <th class="sortable" draggable="true" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="drop(event)">Apellidos y Nombres</th>
+                    <th class="sortable" draggable="true" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="drop(event)"><?= $ui['etiqueta'] ?></th>
+                    <th class="sortable" draggable="true" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="drop(event)">Contacto</th>
+                    <th class="text-center sortable" draggable="true" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="drop(event)">F. Ingreso</th>
+                    <th class="text-center sortable" draggable="true" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="drop(event)">Estado</th>
                     <th class="text-center">Acciones</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (count($personal) > 0): ?>
                     <?php foreach ($personal as $d): ?>
-                    <tr style="transition: background 0.2s;">
+                    <tr class="fila-personal">
+                        <td class="text-center">
+                            <input class="form-check-input border-secondary row-check" type="checkbox" value="<?= $d['id'] ?>" onclick="checkRow(this)">
+                        </td>
+                        
                         <td class="ps-4">
                             <?php if (!empty($d['ruta_foto_cedula'])): ?>
                                 <div class="popover-hover">
                                     <span class="fw-bold text-primary" style="cursor: pointer;"><i class="bi bi-person-vcard me-1"></i><?= htmlspecialchars($d['cedula']) ?></span>
-                                    <div class="popover-content">
-                                        <img src="<?= $d['ruta_foto_cedula'] ?>" class="img-fluid rounded border shadow-sm" alt="Cédula">
-                                    </div>
+                                    <div class="popover-content"><img src="<?= $d['ruta_foto_cedula'] ?>" class="img-fluid rounded border shadow-sm"></div>
                                 </div>
                             <?php else: ?>
                                 <span class="fw-bold text-secondary"><?= htmlspecialchars($d['cedula']) ?></span>
@@ -296,13 +245,13 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
                         <td>
                             <div class="popover-hover d-flex align-items-center">
                                 <?php if (!empty($d['ruta_foto_carnet'])): ?>
-                                    <img src="<?= $d['ruta_foto_carnet'] ?>" class="avatar-thumb me-3 shadow-sm" alt="Foto">
+                                    <img src="<?= $d['ruta_foto_carnet'] ?>" class="avatar-thumb me-3 shadow-sm">
                                 <?php else: ?>
                                     <div class="avatar-thumb me-3 bg-primary-subtle text-primary d-flex align-items-center justify-content-center fw-bold shadow-sm">
                                         <?= strtoupper(substr($d['nombres'], 0, 1) . substr($d['apellidos'], 0, 1)) ?>
                                     </div>
                                 <?php endif; ?>
-                                <span class="fw-bold"><?= htmlspecialchars($d['apellidos'] . ', ' . $d['nombres']) ?></span>
+                                <span class="fw-bold name-val"><?= htmlspecialchars($d['apellidos'] . ', ' . $d['nombres']) ?></span>
                                 <div class="popover-content text-center">
                                     <?php if (!empty($d['ruta_foto_carnet'])): ?><img src="<?= $d['ruta_foto_carnet'] ?>" class="rounded-circle mb-2 shadow" style="width:90px; height:90px; object-fit:cover;"><?php endif; ?>
                                     <h6 class="fw-bold mb-0"><?= htmlspecialchars($d['nombres']) ?></h6>
@@ -312,40 +261,17 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
                         </td>
 
                         <td>
-                            <!-- BOTÓN INTERACTIVO PARA FILTRAR POR MATERIA -->
                             <div class="popover-hover">
-                                <a href="personal.php?tipo=<?= $tipo_id ?>&cargo=<?= $d['cargo_area_id'] ?>" class="badge bg-body-secondary text-body border badge-interactive text-decoration-none px-3 py-2 rounded-pill">
-                                    <?= htmlspecialchars($d['cargo_nombre']) ?> <i class="bi bi-search ms-1 opacity-50"></i>
-                                </a>
-                                <?php if (!empty($d['cargo_descripcion'])): ?>
-                                <div class="popover-content">
-                                    <strong class="text-primary small d-block mb-1"><i class="bi bi-info-circle"></i> Descripción:</strong>
-                                    <span class="small text-muted"><?= htmlspecialchars($d['cargo_descripcion']) ?></span>
-                                </div>
-                                <?php endif; ?>
+                                <span class="badge bg-body-secondary text-body border px-3 py-2 rounded-pill">
+                                    <?= htmlspecialchars($d['cargo_nombre']) ?>
+                                </span>
                             </div>
                         </td>
 
-                        <td>
-                            <?php if (!empty($d['telefono'])): ?>
-                                <div class="popover-hover">
-                                    <?= formatearTelefono($d['telefono']) ?>
-                                    <div class="popover-content p-2" style="width: 200px;">
-                                        <?php $cleanTel = preg_replace('/[^0-9]/', '', $d['telefono']); ?>
-                                        <a href="https://wa.me/<?= $cleanTel ?>" target="_blank" class="btn btn-sm btn-success w-100 rounded-pill shadow-sm"><i class="bi bi-whatsapp me-1"></i> Enviar Mensaje</a>
-                                    </div>
-                                </div>
-                            <?php else: ?><span class="text-muted small">S/R</span><?php endif; ?>
-                        </td>
-
+                        <td><?= !empty($d['telefono']) ? formatearTelefono($d['telefono']) : '<span class="text-muted small">S/R</span>' ?></td>
                         <td class="text-center text-muted small"><?= date('d/m/y', strtotime($d['fecha_ingreso'])) ?></td>
                         <td class="text-center">
-                            <?php 
-                            $bg = 'success'; 
-                            if($d['estado_laboral'] == 'Reposo') $bg = 'warning text-dark'; 
-                            if($d['estado_laboral'] == 'Permiso') $bg = 'info text-dark'; 
-                            if($d['estado_laboral'] == 'Inactivo') $bg = 'danger'; 
-                            ?>
+                            <?php $bg='success'; if($d['estado_laboral']=='Reposo')$bg='warning text-dark'; if($d['estado_laboral']=='Permiso')$bg='info text-dark'; if($d['estado_laboral']=='Inactivo')$bg='danger'; ?>
                             <span class="badge bg-<?= $bg ?>-subtle text-<?= str_replace(' text-dark','',$bg) ?> border px-2 py-1 rounded-pill"><?= $d['estado_laboral'] ?></span>
                         </td>
                         
@@ -357,14 +283,59 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
                     </tr>
                     <?php endforeach; ?>
                 <?php else: ?>
-                    <tr><td colspan="7" class="text-center text-muted py-5"><img src="https://cdn-icons-png.flaticon.com/512/7486/7486754.png" width="80" class="opacity-25 mb-3 d-block mx-auto"><h5 class="fw-bold">Sin resultados</h5><p>No se encontró personal asignado a esta categoría.</p></td></tr>
+                    <tr><td colspan="8" class="text-center text-muted py-5">No hay personal registrado en esta área.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
     </div>
 </div>
 
+<!-- BARRA FLOTANTE INFERIOR (ACCIONES MASIVAS) -->
+<div id="bulk-toolbar">
+    <span id="bulk-count" class="fw-bold border-end border-secondary pe-3 me-2">0 seleccionados</span>
+    
+    <button class="btn btn-sm btn-info fw-bold text-white rounded-pill" onclick="abrirModalBulkMove()">
+        <i class="bi bi-arrow-left-right me-1"></i> Cambiar Cargo
+    </button>
+    <button class="btn btn-sm btn-danger fw-bold rounded-pill" onclick="ejecutarBulkDelete()">
+        <i class="bi bi-trash me-1"></i> Eliminar
+    </button>
+    <button class="btn btn-sm btn-outline-light rounded-circle ms-2" onclick="limpiarSeleccion()" title="Desmarcar Todos">
+        <i class="bi bi-x-lg"></i>
+    </button>
+</div>
 
+<!-- FORMULARIO OCULTO PARA ENVÍO DE MULTIPLES ACCIONES -->
+<form id="bulkForm" method="POST" style="display:none;">
+    <input type="hidden" name="accion" id="bulkAccion">
+    <input type="hidden" name="bulk_ids" id="bulkIds">
+    <input type="hidden" name="nuevo_cargo_id" id="bulkNuevoCargo">
+</form>
+
+<!-- MODAL PARA CAMBIAR CARGO MASIVAMENTE -->
+<div class="modal fade" id="modalBulkMove" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-info text-white">
+                <h6 class="modal-title fw-bold"><i class="bi bi-arrow-left-right me-2"></i>Traslado de Personal</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body bg-light">
+                <p class="small text-muted mb-2">Seleccione el nuevo cargo/área a donde se moverán los trabajadores seleccionados (Su cargo actual será reemplazado).</p>
+                <select id="selectNuevoCargoMasivo" class="form-select border-info shadow-sm">
+                    <?php foreach ($lista_cargos as $cargo): ?>
+                        <option value="<?= $cargo['id'] ?>"><?= htmlspecialchars($cargo['nombre']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="modal-footer border-0 p-2">
+                <button class="btn btn-info text-white w-100 fw-bold" onclick="ejecutarBulkMove()">Confirmar Traslado</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- EL RESTO DE TUS MODALES (REGISTRO, OFFCANVAS) PERMANECE IDÉNTICO AQUÍ -->
 <!-- ========================================== -->
 <!-- OFFCANVAS (EXPEDIENTE MPPE + ARCHIVOS) -->
 <!-- ========================================== -->
@@ -382,9 +353,7 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
 
       <h6 class="text-warning fw-bold mb-2"><i class="bi bi-images me-2"></i>Archivos Digitales Registrados</h6>
       <div class="card border-0 shadow-sm p-3 mb-3 bg-body">
-          <div id="oc_galeria" class="d-flex flex-wrap gap-2">
-              <span class="text-muted small">Sin archivos adjuntos.</span>
-          </div>
+          <div id="oc_galeria" class="d-flex flex-wrap gap-2"></div>
       </div>
 
       <h6 class="text-primary fw-bold mb-2"><i class="bi bi-briefcase-fill me-2"></i>Datos Laborales MPPE</h6>
@@ -563,30 +532,155 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
     </div>
 </div>
 
-<!-- SCRIPT DE AUTO-EDICIÓN DESDE ORGANIGRAMA -->
+<!-- ======================================================== -->
+<!-- SCRIPT 1: LOGICA DE SELECCION MULTIPLE Y ACCIONES MASIVAS-->
+<!-- ======================================================== -->
 <script>
-document.addEventListener("DOMContentLoaded", () => {
-    // Leer la URL para ver si trae el comando de auto_edit
-    const urlParams = new URLSearchParams(window.location.search);
-    const autoEditId = urlParams.get('auto_edit');
+let selectedIds = new Set();
 
-    if (autoEditId) {
-        // Buscar el botón de edición de esa persona específica
-        let botonesEdicion = document.querySelectorAll('button[onclick="editarRegistro(this)"]');
-        
-        for (let btn of botonesEdicion) {
-            let data = JSON.parse(btn.getAttribute('data-empleado'));
+function checkRow(checkbox) {
+    let tr = checkbox.closest('tr');
+    if (checkbox.checked) {
+        selectedIds.add(checkbox.value);
+        tr.classList.add('selected');
+    } else {
+        selectedIds.delete(checkbox.value);
+        tr.classList.remove('selected');
+        document.getElementById('checkAll').checked = false;
+    }
+    actualizarToolbar();
+}
+
+function toggleAll(masterCheck) {
+    let checkboxes = document.querySelectorAll('.row-check');
+    checkboxes.forEach(cb => {
+        cb.checked = masterCheck.checked;
+        checkRow(cb);
+    });
+}
+
+function limpiarSeleccion() {
+    document.getElementById('checkAll').checked = false;
+    toggleAll(document.getElementById('checkAll'));
+}
+
+function actualizarToolbar() {
+    let toolbar = document.getElementById('bulk-toolbar');
+    let countSpan = document.getElementById('bulk-count');
+    
+    if (selectedIds.size > 0) {
+        countSpan.innerText = selectedIds.size + (selectedIds.size === 1 ? " seleccionado" : " seleccionados");
+        toolbar.classList.add('show');
+    } else {
+        toolbar.classList.remove('show');
+    }
+}
+
+function getSelectedArray() { return Array.from(selectedIds).join(','); }
+
+function ejecutarBulkDelete() {
+    if(confirm(`¿Estás seguro de eliminar a los ${selectedIds.size} trabajadores seleccionados? (Se borrará todo su historial y archivos).`)) {
+        document.getElementById('bulkAccion').value = 'bulk_delete';
+        document.getElementById('bulkIds').value = getSelectedArray();
+        document.getElementById('bulkForm').submit();
+    }
+}
+
+function abrirModalBulkMove() {
+    new bootstrap.Modal(document.getElementById('modalBulkMove')).show();
+}
+
+function ejecutarBulkMove() {
+    let nuevoCargo = document.getElementById('selectNuevoCargoMasivo').value;
+    if(!nuevoCargo) { alert("Debe seleccionar un cargo de la lista."); return; }
+    
+    if(confirm(`¿Trasladar a los ${selectedIds.size} trabajadores al nuevo cargo?`)) {
+        document.getElementById('bulkAccion').value = 'bulk_move';
+        document.getElementById('bulkIds').value = getSelectedArray();
+        document.getElementById('bulkNuevoCargo').value = nuevoCargo;
+        document.getElementById('bulkForm').submit();
+    }
+}
+</script>
+
+<!-- ======================================================== -->
+<!-- SCRIPT 2: ORDENAMIENTO (ASC/DESC) Y ARRASTRE DE COLUMNAS -->
+<!-- ======================================================== -->
+<script>
+// ORDENAMIENTO DE FILAS
+const getCellValue = (tr, idx) => tr.children[idx].innerText || tr.children[idx].textContent;
+const comparer = (idx, asc) => (a, b) => ((v1, v2) => 
+    v1 !== '' && v2 !== '' && !isNaN(v1) && !isNaN(v2) ? v1 - v2 : v1.toString().localeCompare(v2)
+    )(getCellValue(asc ? a : b, idx), getCellValue(asc ? b : a, idx));
+
+document.querySelectorAll('th.sortable').forEach(th => th.addEventListener('click', (() => {
+    const table = th.closest('table');
+    const tbody = table.querySelector('tbody');
+    
+    // Limpiar clases de otras columnas
+    Array.from(th.parentNode.children).forEach(sibling => {
+        if(sibling !== th) { sibling.classList.remove('asc', 'desc'); }
+    });
+    
+    // Alternar clase
+    let asc = th.classList.contains('asc');
+    th.classList.toggle('asc', !asc);
+    th.classList.toggle('desc', asc);
+
+    // Ordenar y Reacomodar
+    Array.from(tbody.querySelectorAll('tr.fila-personal'))
+        .sort(comparer(Array.from(th.parentNode.children).indexOf(th), !asc))
+        .forEach(tr => tbody.appendChild(tr));
+})));
+
+// ARRASTRE Y SOLTAR (DRAG & DROP) DE COLUMNAS
+let dragColIndex = null;
+
+function dragStart(e) {
+    dragColIndex = Array.from(e.target.parentNode.children).indexOf(e.target);
+    e.dataTransfer.effectAllowed = "move";
+}
+
+function dragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }
+
+function drop(e) {
+    e.preventDefault();
+    let targetTh = e.target.closest('th');
+    if (!targetTh) return;
+    
+    let targetIndex = Array.from(targetTh.parentNode.children).indexOf(targetTh);
+    if (dragColIndex === targetIndex || dragColIndex === 0 || targetIndex === 0 || targetIndex === 7) return; // No mover el checkbox (0) ni acciones (7)
+
+    let table = targetTh.closest('table');
+    let rows = table.querySelectorAll('tr');
+
+    rows.forEach(row => {
+        let cells = row.children;
+        if (cells.length > Math.max(dragColIndex, targetIndex)) {
+            let colToMove = cells[dragColIndex];
+            let referenceCol = cells[targetIndex];
             
-            // Si el ID coincide, simulamos el clic para abrir el formulario
-            if (data.id == autoEditId) {
-                setTimeout(() => {
-                    btn.click();
-                }, 500); // Pequeño retraso visual
-                break;
+            if (dragColIndex < targetIndex) {
+                referenceCol.after(colToMove);
+            } else {
+                referenceCol.before(colToMove);
             }
         }
-        
-        // Limpiamos la URL para que si recarga la página, no se vuelva a abrir solo
+    });
+}
+</script>
+
+<!-- AUTO EDICION (SCRIPT DE ORGANIGRAMA) -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const autoEditId = urlParams.get('auto_edit');
+    if (autoEditId) {
+        let botonesEdicion = document.querySelectorAll('button[onclick="editarRegistro(this)"]');
+        for (let btn of botonesEdicion) {
+            let data = JSON.parse(btn.getAttribute('data-empleado'));
+            if (data.id == autoEditId) { setTimeout(() => { btn.click(); }, 500); break; }
+        }
         window.history.replaceState(null, '', window.location.pathname + '?tipo=' + urlParams.get('tipo'));
     }
 });

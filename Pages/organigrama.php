@@ -111,6 +111,9 @@ include '../Includes/sidebar.php';
     
     /* Cursor para indicar que las ventanas se pueden arrastrar */
     .modal-header { cursor: move; }
+
+    /* Hacer que el texto de las ventanas modales no se pueda seleccionar (sombrear de azul) */
+    .modal-content { user-select: none; -webkit-user-select: none; -moz-user-select: none; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
