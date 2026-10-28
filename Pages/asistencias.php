@@ -59,11 +59,13 @@ foreach ($todo_personal_raw as $p) {
     $personal_agrupado[$p['tipo']][] = ['id' => $p['id'], 'nombre' => $p['nombre']];
 }
 
-$kpi_ausentes = 0; $kpi_retardos = 0; $kpi_justificados = 0;
+// CORRECCIÓN: Ahora se cuentan los 4 estados reales de la Base de Datos
+$kpi_ausentes = 0; $kpi_retardos = 0; $kpi_justificados = 0; $kpi_presentes = 0;
 foreach($datos as $d) {
     if($d['estado_asistencia'] == 'Ausente') $kpi_ausentes++;
     if($d['estado_asistencia'] == 'Retardo') $kpi_retardos++;
     if($d['estado_asistencia'] == 'Falta Justificada') $kpi_justificados++;
+    if($d['estado_asistencia'] == 'Presente') $kpi_presentes++;
 }
 include '../Includes/header.php'; include '../Includes/sidebar.php';
 ?>
@@ -82,26 +84,33 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
     <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold" data-bs-toggle="modal" data-bs-target="#modalRegistro"><i class="bi bi-plus-lg me-1"></i> Reportar Novedad</button>
 </div>
 
-<!-- KPIs SUPERIORES -->
+<!-- KPIs SUPERIORES CORREGIDOS (4 Tarjetas) -->
 <div class="row mb-4">
-    <div class="col-md-4">
-        <div class="card border-0 bg-danger-subtle text-danger shadow-sm rounded-4 h-100">
-            <div class="card-body d-flex justify-content-between align-items-center p-4">
-                <div><h6 class="fw-bold mb-1">Ausencias Injustificadas</h6><h2 class="mb-0 fw-black"><?= $kpi_ausentes ?></h2></div><i class="bi bi-person-x-fill fs-1 opacity-50"></i>
+    <div class="col-md-3 mb-2">
+        <div class="card border-0 bg-success-subtle text-success shadow-sm rounded-4 h-100">
+            <div class="card-body d-flex justify-content-between align-items-center p-3">
+                <div><h6 class="fw-bold mb-1">Personal Presente</h6><h2 class="mb-0 fw-black"><?= $kpi_presentes ?></h2></div><i class="bi bi-person-check-fill fs-1 opacity-50"></i>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card border-0 bg-warning-subtle text-warning-emphasis shadow-sm rounded-4 h-100">
-            <div class="card-body d-flex justify-content-between align-items-center p-4">
-                <div><h6 class="fw-bold mb-1">Llegadas con Retardo</h6><h2 class="mb-0 fw-black"><?= $kpi_retardos ?></h2></div><i class="bi bi-clock-history fs-1 opacity-50"></i>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
+    <div class="col-md-3 mb-2">
         <div class="card border-0 bg-info-subtle text-info-emphasis shadow-sm rounded-4 h-100">
-            <div class="card-body d-flex justify-content-between align-items-center p-4">
+            <div class="card-body d-flex justify-content-between align-items-center p-3">
                 <div><h6 class="fw-bold mb-1">Faltas Justificadas</h6><h2 class="mb-0 fw-black"><?= $kpi_justificados ?></h2></div><i class="bi bi-file-medical-fill fs-1 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-2">
+        <div class="card border-0 bg-warning-subtle text-warning-emphasis shadow-sm rounded-4 h-100">
+            <div class="card-body d-flex justify-content-between align-items-center p-3">
+                <div><h6 class="fw-bold mb-1">Llegadas Tardías</h6><h2 class="mb-0 fw-black"><?= $kpi_retardos ?></h2></div><i class="bi bi-clock-history fs-1 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-2">
+        <div class="card border-0 bg-danger-subtle text-danger shadow-sm rounded-4 h-100">
+            <div class="card-body d-flex justify-content-between align-items-center p-3">
+                <div><h6 class="fw-bold mb-1">Ausencias Injust.</h6><h2 class="mb-0 fw-black"><?= $kpi_ausentes ?></h2></div><i class="bi bi-person-x-fill fs-1 opacity-50"></i>
             </div>
         </div>
     </div>
@@ -128,9 +137,11 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
                         <td class="fw-bold"><?= htmlspecialchars($d['apellidos'] . ', ' . $d['nombres']) ?></td>
                         <td>
                             <?php 
+                            // CORRECCIÓN VISUAL: Identificación exacta del estado
                             if($d['estado_asistencia'] == 'Ausente') echo "<span class='badge bg-danger pulse-badge rounded-pill px-3 py-2'><i class='bi bi-x-circle me-1'></i> AUSENTE</span>";
                             elseif($d['estado_asistencia'] == 'Retardo') echo "<span class='badge bg-warning text-dark pulse-warning rounded-pill px-3 py-2'><i class='bi bi-clock me-1'></i> RETARDO</span>";
-                            else echo "<span class='badge bg-info text-dark rounded-pill px-3 py-2'><i class='bi bi-check-circle me-1'></i> JUSTIFICADO</span>";
+                            elseif($d['estado_asistencia'] == 'Falta Justificada') echo "<span class='badge bg-info text-dark rounded-pill px-3 py-2'><i class='bi bi-file-medical me-1'></i> JUSTIFICADO</span>";
+                            elseif($d['estado_asistencia'] == 'Presente') echo "<span class='badge bg-success rounded-pill px-3 py-2'><i class='bi bi-check-circle me-1'></i> PRESENTE</span>";
                             ?>
                         </td>
                         <td class="text-muted small"><i class="bi bi-quote opacity-50 me-1"></i><?= htmlspecialchars($d['observaciones']) ?: 'Sin observaciones registradas.' ?></td>
@@ -140,7 +151,7 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
                     </tr>
                     <?php endforeach; ?>
                 <?php else: ?>
-                    <tr><td colspan="6" class="text-center text-success py-5"><i class="bi bi-check2-all fs-1 d-block mb-3"></i><h5 class="fw-bold">Jornada Excelente</h5><p>Todo el personal asistió puntualmente este día.</p></td></tr>
+                    <tr><td colspan="6" class="text-center text-success py-5"><i class="bi bi-check2-all fs-1 d-block mb-3"></i><h5 class="fw-bold">Sin Novedades</h5><p>No hay registros de asistencia en esta fecha.</p></td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
@@ -149,7 +160,7 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
 
 <!-- Modal Registro -->
 <div class="modal fade" id="modalRegistro" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
-    <div class="modal-header bg-primary text-white"><h5 class="modal-title">Registrar Ausencia o Retardo</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+    <div class="modal-header bg-primary text-white"><h5 class="modal-title">Registrar Control de Asistencia</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
     <form action="" method="POST"><div class="modal-body">
         <input type="hidden" name="accion" value="crear">
         
@@ -170,14 +181,15 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
             </select>
         </div>
         <div class="mb-3">
-            <label>Estado</label>
+            <label>Estado Reportado</label>
             <select name="estado_asistencia" class="form-select" required>
+                <option value="Presente">Presente (Asistencia Regular)</option>
                 <option value="Ausente">Ausente (Injustificada)</option>
                 <option value="Falta Justificada">Falta Justificada / Permiso</option>
                 <option value="Retardo">Llegada con Retardo</option>
             </select>
         </div>
-        <div class="mb-3"><label>Motivo</label><textarea name="observaciones" class="form-control" rows="2"></textarea></div>
+        <div class="mb-3"><label>Motivo / Observaciones</label><textarea name="observaciones" class="form-control" rows="2"></textarea></div>
     </div><div class="modal-footer"><button type="submit" class="btn btn-primary w-100">Guardar Registro</button></div></form>
 </div></div></div>
 
@@ -192,7 +204,7 @@ function cargarPersonal() {
     if(tipo && dataPersonal[tipo]) {
         select.disabled = false;
         dataPersonal[tipo].forEach(p => {
-            select.add(new Option(p.nombre, p.id)); // Ahora enviamos el ID limpio directamente
+            select.add(new Option(p.nombre, p.id)); 
         });
     } else {
         select.disabled = true;
