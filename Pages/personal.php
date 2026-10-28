@@ -235,11 +235,11 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
                         <td class="ps-4">
                             <?php if (!empty($d['ruta_foto_cedula'])): ?>
                                 <div class="popover-hover">
-                                    <span class="fw-bold text-primary" style="cursor: pointer;"><i class="bi bi-person-vcard me-1"></i><?= htmlspecialchars($d['cedula']) ?></span>
+                                    <span class="fw-bold text-primary" style="cursor: pointer;"><i class="bi bi-person-vcard me-1"></i><?= htmlspecialchars($d['cedula'], ENT_QUOTES, 'UTF-8') ?></span>
                                     <div class="popover-content"><img src="<?= $d['ruta_foto_cedula'] ?>" class="img-fluid rounded border shadow-sm"></div>
                                 </div>
                             <?php else: ?>
-                                <span class="fw-bold text-secondary"><?= htmlspecialchars($d['cedula']) ?></span>
+                                <span class="fw-bold text-secondary"><?= htmlspecialchars($d['cedula'], ENT_QUOTES, 'UTF-8') ?></span>
                             <?php endif; ?>
                         </td>
 
@@ -248,15 +248,21 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
                                 <?php if (!empty($d['ruta_foto_carnet'])): ?>
                                     <img src="<?= $d['ruta_foto_carnet'] ?>" class="avatar-thumb me-3 shadow-sm">
                                 <?php else: ?>
-                                    <div class="avatar-thumb me-3 bg-primary-subtle text-primary d-flex align-items-center justify-content-center fw-bold shadow-sm">
-                                        <?= strtoupper(substr($d['nombres'], 0, 1) . substr($d['apellidos'], 0, 1)) ?>
+                                    <?php 
+                                    // COLOR DINÁMICO DEL AVATAR SEGÚN EL TIPO DE PERSONAL
+                                    $avBg = 'bg-primary text-white';
+                                    if ($tipo_id == 2) $avBg = 'bg-success text-white';
+                                    if ($tipo_id == 3) $avBg = 'bg-warning text-dark';
+                                    ?>
+                                    <div class="avatar-thumb me-3 <?= $avBg ?> d-flex align-items-center justify-content-center fw-bold shadow-sm">
+                                        <?= mb_strtoupper(mb_substr($d['nombres'], 0, 1, 'UTF-8') . mb_substr($d['apellidos'], 0, 1, 'UTF-8'), 'UTF-8') ?>
                                     </div>
                                 <?php endif; ?>
-                                <span class="fw-bold name-val"><?= htmlspecialchars($d['apellidos'] . ', ' . $d['nombres']) ?></span>
+                                <span class="fw-bold name-val"><?= htmlspecialchars($d['apellidos'] . ', ' . $d['nombres'], ENT_QUOTES, 'UTF-8') ?></span>
                                 <div class="popover-content text-center">
                                     <?php if (!empty($d['ruta_foto_carnet'])): ?><img src="<?= $d['ruta_foto_carnet'] ?>" class="rounded-circle mb-2 shadow" style="width:90px; height:90px; object-fit:cover;"><?php endif; ?>
-                                    <h6 class="fw-bold mb-0"><?= htmlspecialchars($d['nombres']) ?></h6>
-                                    <span class="badge bg-primary-subtle text-primary mt-2"><?= $d['edad'] ? $d['edad'].' Años' : 'Edad S/R' ?></span>
+                                    <h6 class="fw-bold mb-0 text-white"><?= htmlspecialchars($d['nombres'], ENT_QUOTES, 'UTF-8') ?></h6>
+                                    <span class="badge bg-primary mt-2"><?= $d['edad'] ? $d['edad'].' Años' : 'Edad S/R' ?></span>
                                 </div>
                             </div>
                         </td>
@@ -264,7 +270,7 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
                         <td>
                             <div class="popover-hover">
                                 <span class="badge bg-body-secondary text-body border px-3 py-2 rounded-pill">
-                                    <?= htmlspecialchars($d['cargo_nombre']) ?>
+                                    <?= htmlspecialchars($d['cargo_nombre'], ENT_QUOTES, 'UTF-8') ?>
                                 </span>
                             </div>
                         </td>
@@ -272,8 +278,16 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
                         <td><?= !empty($d['telefono']) ? formatearTelefono($d['telefono']) : '<span class="text-muted small">S/R</span>' ?></td>
                         <td class="text-center text-muted small"><?= date('d/m/y', strtotime($d['fecha_ingreso'])) ?></td>
                         <td class="text-center">
-                            <?php $bg='success'; if($d['estado_laboral']=='Reposo')$bg='warning text-dark'; if($d['estado_laboral']=='Permiso')$bg='info text-dark'; if($d['estado_laboral']=='Inactivo')$bg='danger'; ?>
-                            <span class="badge bg-<?= $bg ?>-subtle text-<?= str_replace(' text-dark','',$bg) ?> border px-2 py-1 rounded-pill"><?= $d['estado_laboral'] ?></span>
+                            <?php 
+                            // REPARACIÓN DE COLORES PARA QUE SEAN LEGIBLES
+                            $est = $d['estado_laboral'];
+                            $bClass = 'bg-success text-white'; 
+                            if($est == 'Reposo') $bClass = 'bg-warning text-dark fw-bold'; 
+                            if($est == 'Permiso') $bClass = 'bg-info text-dark fw-bold'; 
+                            if($est == 'Inactivo') $bClass = 'bg-danger text-white'; 
+                            if($est == 'Jubilado') $bClass = 'bg-secondary text-white'; 
+                            ?>
+                            <span class="badge <?= $bClass ?> px-3 py-1 rounded-pill shadow-sm"><?= $est ?></span>
                         </td>
                         
                         <td class="text-center text-nowrap">

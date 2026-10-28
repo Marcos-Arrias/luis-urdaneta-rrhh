@@ -53,28 +53,40 @@ $queryArbol = $pdo->query("
 
 $data_tree = [];
 foreach ($queryArbol as $row) {
-    $img = $row['foto'] ? $row['foto'] : 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
+    // 1. GENERADOR DE AVATAR INTELIGENTE CON COLOR SEGÚN CARGO
+    $iniciales = mb_strtoupper(mb_substr($row['nombres'], 0, 1, 'UTF-8') . mb_substr($row['apellidos'], 0, 1, 'UTF-8'), 'UTF-8');
+    
+    $color = '0d6efd'; // Azul default (Docente)
+    $textoColor = 'ffffff';
+    if ($row['tipo_personal_id'] == 2) $color = '198754'; // Verde (Admin)
+    if ($row['tipo_personal_id'] == 3) { $color = 'ffc107'; $textoColor = '000000'; } // Amarillo (Obrero)
+    
+    // Crear un SVG en Base64 para que el gráfico lo lea nativamente
+    $svgAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23$color'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%23$textoColor' font-size='42' font-family='Arial' font-weight='bold'>$iniciales</text></svg>";
+
+    $img = $row['foto'] ? $row['foto'] : $svgAvatar;
+    
     $data_tree[] = [
         'id' => $row['id'],
         'pid' => $row['pid'],
-        'name' => $row['apellidos'] . ', ' . $row['nombres'],
-        'title' => $row['cargo'],
+        'name' => htmlspecialchars($row['apellidos'] . ', ' . $row['nombres'], ENT_QUOTES, 'UTF-8'),
+        'title' => htmlspecialchars($row['cargo'], ENT_QUOTES, 'UTF-8'),
         'img' => $img,
         
         // Datos para redirección y detalles
         'tipo_personal' => $row['tipo_personal_id'],
         'cedula' => 'V-' . $row['cedula'],
-        'telefono' => $row['telefono'] ?? 'S/R',
-        'correo' => $row['correo_electronico'] ?? 'S/R',
+        'telefono' => htmlspecialchars($row['telefono'] ?? 'S/R', ENT_QUOTES, 'UTF-8'),
+        'correo' => htmlspecialchars($row['correo_electronico'] ?? 'S/R', ENT_QUOTES, 'UTF-8'),
         'ingreso' => date('d/m/Y', strtotime($row['fecha_ingreso'])),
         'estado' => $row['estado_laboral'],
         
         // Detalles extras nuevos
-        'estado_civil' => $row['estado_civil'] ?? 'S/R',
-        'nivel_academico' => $row['nivel_academico'] ?? 'S/R',
-        'tipo_sangre' => $row['tipo_sangre'] ?? 'S/R',
-        'banco' => $row['banco_nomina'] ?? 'S/R',
-        'direccion' => $row['direccion_habitacion'] ?? 'S/R'
+        'estado_civil' => htmlspecialchars($row['estado_civil'] ?? 'S/R', ENT_QUOTES, 'UTF-8'),
+        'nivel_academico' => htmlspecialchars($row['nivel_academico'] ?? 'S/R', ENT_QUOTES, 'UTF-8'),
+        'tipo_sangre' => htmlspecialchars($row['tipo_sangre'] ?? 'S/R', ENT_QUOTES, 'UTF-8'),
+        'banco' => htmlspecialchars($row['banco_nomina'] ?? 'S/R', ENT_QUOTES, 'UTF-8'),
+        'direccion' => htmlspecialchars($row['direccion_habitacion'] ?? 'S/R', ENT_QUOTES, 'UTF-8')
     ];
 }
 $jerarquia_actual = json_encode($data_tree);
@@ -220,7 +232,7 @@ include '../Includes/sidebar.php';
                     </div>
                 </div>
             </div>
-            <div class="modal-footer p-2 bg-light">
+            <div class="modal-footer p-2 border-top">
                 <button type="button" class="btn btn-secondary w-100 fw-bold" data-bs-dismiss="modal">Cerrar Ficha</button>
             </div>
         </div>

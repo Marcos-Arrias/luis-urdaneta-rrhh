@@ -63,11 +63,13 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
 .schedule-grid { display: flex; overflow-x: auto; gap: 1rem; padding-bottom: 1rem; }
 .day-col { flex: 1; min-width: 250px; background: var(--bs-body-tertiary); border-radius: 1.2rem; padding: 1rem; border: 1px solid var(--bs-border-color); }
 .day-header { text-align: center; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px dashed var(--bs-border-color); }
-.shift-card { background: var(--bs-body-bg); border-radius: 1rem; padding: 1rem; margin-bottom: 1rem; border-left: 5px solid; box-shadow: 0 4px 15px rgba(0,0,0,0.05); cursor: pointer; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); position: relative; overflow: hidden; }
+.shift-card { background: var(--bs-body-bg); border-radius: 1rem; padding: 1rem; margin-bottom: 1rem; border-left: 5px solid; box-shadow: 0 4px 15px rgba(0,0,0,0.05); cursor: pointer; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); position: relative; overflow: hidden; color: #fff;}
+.shift-card.bg-warning { color: #000 !important; } /* Fuerza negro en tarjetas amarillas */
 .shift-card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-.shift-time { font-size: 0.8rem; font-weight: 700; color: var(--bs-secondary); display: flex; align-items: center; margin-bottom: 0.5rem; }
+.shift-time { font-size: 0.8rem; font-weight: 700; opacity: 0.9; display: flex; align-items: center; margin-bottom: 0.5rem; }
 .shift-title { font-weight: 800; font-size: 1.1rem; margin-bottom: 0.2rem; }
-.shift-count { position: absolute; right: 1rem; top: 1rem; background: var(--bs-primary-subtle); color: var(--bs-primary); font-weight: bold; border-radius: 50px; padding: 0.2rem 0.6rem; font-size: 0.8rem; }
+.shift-count { position: absolute; right: 1rem; top: 1rem; background: rgba(0,0,0,0.2); color: inherit; font-weight: bold; border-radius: 50px; padding: 0.2rem 0.6rem; font-size: 0.8rem; }
+.badge-member { background: rgba(0,0,0,0.15); color: inherit; border: 1px solid rgba(255,255,255,0.2); font-size:0.75rem; font-weight: 600; padding: 3px 8px;}
 .bg-primary { border-left-color: #0d6efd !important; } .bg-success { border-left-color: #198754 !important; } .bg-danger { border-left-color: #dc3545 !important; } .bg-warning { border-left-color: #ffc107 !important; }
 </style>
 
@@ -104,7 +106,7 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
                     <?php 
                     $mostrados = 0;
                     foreach($empleados as $e) {
-                        if($mostrados < 3) echo '<span class="badge bg-secondary-subtle text-secondary border rounded-pill" style="font-size:0.7rem;">'.htmlspecialchars(explode(" ", $e['nombres'])[0]).'</span>';
+                        if($mostrados < 3) echo '<span class="badge badge-member rounded-pill">'.htmlspecialchars(explode(" ", $e['nombres'])[0], ENT_QUOTES, 'UTF-8').'</span>';
                         $mostrados++;
                     }
                     if($total > 3) echo '<span class="badge bg-light text-dark border rounded-pill">+'.($total-3).'</span>';
