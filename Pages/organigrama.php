@@ -15,7 +15,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nodos'])) {
     header('Content-Type: application/json');
     try {
         $nodos = json_decode($_POST['nodos'], true);
-        
         $pdo->beginTransaction();
         $pdo->exec("DELETE FROM organigrama_jerarquia"); 
         
@@ -28,7 +27,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nodos'])) {
             }
         }
         $pdo->commit();
-        
         registrarHistorial($pdo, 'Organigrama', 'ACTUALIZAR', "Actualizó gráficamente la jerarquía institucional.");
         echo json_encode(['success' => true]);
     } catch (Exception $e) {
@@ -38,11 +36,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nodos'])) {
     exit;
 }
 
-// 3. CARGAR ÁRBOL ACTUAL (Con datos extra para la vista de "Detalles")
+// 3. CARGAR ÁRBOL ACTUAL (Ahora con MUCHOS más datos y el ID de categoría)
 $queryArbol = $pdo->query("
     SELECT o.personal_id as id, o.jefe_id as pid, 
-           p.cedula, p.nombres, p.apellidos, c.nombre as cargo,
+           p.cedula, p.nombres, p.apellidos, c.nombre as cargo, c.tipo_personal_id,
            pda.turno, pda.correo_electronico, p.fecha_ingreso, p.estado_laboral,
+           pda.estado_civil, pda.nivel_academico, pda.tipo_sangre, pda.banco_nomina, pda.direccion_habitacion,
            (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Teléfono Personal' LIMIT 1) as telefono,
            (SELECT ruta_archivo FROM personal_archivos_digitales WHERE personal_id = p.id AND tipo_documento_clave = 'FOT' ORDER BY id DESC LIMIT 1) as foto
     FROM organigrama_jerarquia o
@@ -61,31 +60,37 @@ foreach ($queryArbol as $row) {
         'name' => $row['apellidos'] . ', ' . $row['nombres'],
         'title' => $row['cargo'],
         'img' => $img,
-        // Datos extra para el modal de lectura
-        'cedula' => $row['cedula'],
+        
+        // Datos para redirección y detalles
+        'tipo_personal' => $row['tipo_personal_id'],
+        'cedula' => 'V-' . $row['cedula'],
         'telefono' => $row['telefono'] ?? 'S/R',
         'correo' => $row['correo_electronico'] ?? 'S/R',
         'ingreso' => date('d/m/Y', strtotime($row['fecha_ingreso'])),
-        'estado' => $row['estado_laboral']
+        'estado' => $row['estado_laboral'],
+        
+        // Detalles extras nuevos
+        'estado_civil' => $row['estado_civil'] ?? 'S/R',
+        'nivel_academico' => $row['nivel_academico'] ?? 'S/R',
+        'tipo_sangre' => $row['tipo_sangre'] ?? 'S/R',
+        'banco' => $row['banco_nomina'] ?? 'S/R',
+        'direccion' => $row['direccion_habitacion'] ?? 'S/R'
     ];
 }
 $jerarquia_actual = json_encode($data_tree);
 
 // 4. CARGAR PERSONAL ACTIVO PARA AÑADIR NUEVOS
 $empleados = $pdo->query("
-    SELECT p.id, p.nombres, p.apellidos, c.nombre as cargo,
+    SELECT p.id, p.nombres, p.apellidos, c.nombre as cargo, c.tipo_personal_id,
            p.cedula, p.fecha_ingreso, p.estado_laboral,
            (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Teléfono Personal' LIMIT 1) as telefono,
-           (SELECT ruta_archivo FROM personal_archivos_digitales WHERE personal_id = p.id AND tipo_documento_clave = 'FOT' ORDER BY id DESC LIMIT 1) as foto,
-           pda.correo_electronico
+           (SELECT ruta_archivo FROM personal_archivos_digitales WHERE personal_id = p.id AND tipo_documento_clave = 'FOT' ORDER BY id DESC LIMIT 1) as foto
     FROM personal p 
     JOIN personal_cargos pc ON p.id = pc.personal_id AND pc.estado_cargo = 'Vigente'
     JOIN cat_cargos_areas c ON pc.cargo_area_id = c.id 
-    LEFT JOIN personal_datos_adicionales pda ON p.id = pda.personal_id
     WHERE p.estado_laboral = 'Activo'
     ORDER BY p.apellidos ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
-
 $personal_json = json_encode($empleados);
 
 include '../Includes/header.php'; 
@@ -96,72 +101,60 @@ include '../Includes/sidebar.php';
 <script src="https://balkan.app/js/OrgChart.js"></script>
 
 <style>
-    /* Contenedor del árbol */
-    #tree-container { 
-        width: 100%; 
-        height: 700px; 
-        background-color: var(--bs-body-tertiary); 
-        border-radius: 1rem; 
-        border: 1px solid var(--bs-border-color);
-        position: relative;
-        overflow: hidden;
-    }
+    #tree-container { width: 100%; height: 750px; background-color: var(--bs-body-tertiary); border-radius: 1rem; border: 1px solid var(--bs-border-color); position: relative; overflow: hidden;}
     #tree { width: 100%; height: 100%; }
     
-    /* Adaptación al modo oscuro */
     [data-bs-theme="dark"] .boc-light rect { fill: #2b3035 !important; stroke: #495057 !important; }
     [data-bs-theme="dark"] .boc-light text { fill: #f8f9fa !important; }
     
-    /* OCULTAR TODOS LOS BOTONES DEFAULT (INGLÉS) DE LA LIBRERÍA */
-    .boc-edit-button, .boc-add-button, .node-menu { display: none !important; }
+    .boc-edit-form, .edit-form, div[data-balkan-orgchart-edit-form], .boc-edit-button, .boc-add-button, .node-menu { display: none !important; opacity: 0 !important; visibility: hidden !important; }
+    
+    /* Cursor para indicar que las ventanas se pueden arrastrar */
+    .modal-header { cursor: move; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2 class="fw-bold mb-0"><i class="bi bi-diagram-3 me-2 text-primary"></i> Organigrama Institucional</h2>
-        <p class="text-muted small mb-0">Use los botones inferiores (+ / -) para Zoom. Arrastre para mover.</p>
+        <p class="text-muted small mb-0">Rueda del ratón para Zoom. Arrastre para mover. Clic en empleado para opciones.</p>
     </div>
     <div class="d-flex gap-2">
-        <button class="btn btn-outline-danger rounded-pill fw-bold shadow-sm" onclick="vaciarArbol()" title="Vaciar panel">
-            <i class="bi bi-trash"></i>
-        </button>
-        <button class="btn btn-success shadow-sm rounded-pill px-4 fw-bold" onclick="abrirModalAgregar()">
-            <i class="bi bi-person-plus-fill me-1"></i> Añadir Personal
-        </button>
-        <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold" onclick="guardarOrganigrama()" id="btnGuardar">
-            <i class="bi bi-save me-1"></i> Guardar Cambios
-        </button>
+        <button class="btn btn-outline-danger rounded-pill fw-bold shadow-sm" onclick="vaciarArbol()" title="Vaciar panel"><i class="bi bi-trash"></i></button>
+        <button class="btn btn-success shadow-sm rounded-pill px-4 fw-bold" onclick="abrirModalAgregar()"><i class="bi bi-person-plus-fill me-1"></i> Añadir Personal</button>
+        <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold" onclick="guardarOrganigrama()" id="btnGuardar"><i class="bi bi-save me-1"></i> Guardar Cambios</button>
     </div>
 </div>
 
 <div class="card shadow-sm border-0 rounded-4 mb-4">
     <div class="card-body p-0">
-        <div id="tree-container">
-            <div id="tree"></div>
-        </div>
+        <div id="tree-container"><div id="tree"></div></div>
     </div>
 </div>
 
 <!-- ========================================== -->
-<!-- 1. MODAL "MENÚ DE OPCIONES" AL HACER CLIC -->
+<!-- 1. MENÚ DE OPCIONES DEL NODO -->
 <!-- ========================================== -->
-<div class="modal fade" id="modalOpcionesNodo" tabindex="-1">
+<div class="modal fade" id="modalOpcionesNodo" tabindex="-1" data-bs-backdrop="false">
     <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header bg-dark text-white">
-                <h6 class="modal-title fw-bold" id="opcionesNodeName">Opciones</h6>
+        <div class="modal-content border border-secondary shadow-lg">
+            <div class="modal-header bg-dark text-white py-2">
+                <h6 class="modal-title fw-bold">Opciones del Empleado</h6>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-3">
                 <input type="hidden" id="opcionesNodeId">
+                <p class="text-center fw-bold mb-3" id="opcionesNodeName"></p>
                 <div class="d-grid gap-2">
                     <button class="btn btn-info text-white fw-bold text-start" onclick="abrirDesdeMenu('detalles')">
-                        <i class="bi bi-eye-fill me-2"></i> Ver Detalles
+                        <i class="bi bi-eye-fill me-2"></i> Ver Detalles Completos
                     </button>
                     <button class="btn btn-warning text-dark fw-bold text-start" onclick="abrirDesdeMenu('editar')">
-                        <i class="bi bi-diagram-2-fill me-2"></i> Cambiar Posición (Jefe)
+                        <i class="bi bi-diagram-2-fill me-2"></i> Cambiar de Jefe
                     </button>
-                    <button class="btn btn-danger fw-bold text-start" onclick="abrirDesdeMenu('eliminar')">
+                    <button class="btn btn-success fw-bold text-start" onclick="abrirDesdeMenu('redirigir_crud')">
+                        <i class="bi bi-pencil-square me-2"></i> Editar en Personal
+                    </button>
+                    <button class="btn btn-danger fw-bold text-start mt-2" onclick="abrirDesdeMenu('eliminar')">
                         <i class="bi bi-trash-fill me-2"></i> Quitar del Organigrama
                     </button>
                 </div>
@@ -171,12 +164,91 @@ include '../Includes/sidebar.php';
 </div>
 
 <!-- ========================================== -->
-<!-- 2. MODAL: AGREGAR AL ÁRBOL -->
+<!-- 2. VER DETALLES (MÁS COMPLETO Y CON ACORDEÓN) -->
 <!-- ========================================== -->
-<div class="modal fade" id="modalAddNode" tabindex="-1">
+<div class="modal fade" id="modalVerDetalles" tabindex="-1" data-bs-backdrop="false">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header bg-success text-white">
+        <div class="modal-content border border-info shadow-lg">
+            <div class="modal-header bg-info text-white py-2">
+                <h5 class="modal-title fw-bold"><i class="bi bi-person-vcard me-2"></i>Ficha Detallada (Lectura)</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-3 bg-body-tertiary">
+                <div class="d-flex align-items-center mb-3">
+                    <img id="detImg" src="" class="rounded-circle shadow-sm me-3" style="width: 80px; height: 80px; object-fit: cover; border: 3px solid #0dcaf0;">
+                    <div>
+                        <h4 class="fw-bold mb-0" id="detName">Nombre</h4>
+                        <span class="badge bg-info text-dark mt-1" id="detTitle">Cargo</span>
+                        <span class="badge bg-success mt-1" id="detEstado">Estado</span>
+                    </div>
+                </div>
+                
+                <div class="accordion shadow-sm" id="accordionDetalles">
+                    <!-- Basic -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header"><button class="accordion-button fw-bold py-2" type="button" data-bs-toggle="collapse" data-bs-target="#col1">Datos Principales</button></h2>
+                        <div id="col1" class="accordion-collapse collapse show" data-bs-parent="#accordionDetalles">
+                            <div class="accordion-body small bg-body">
+                                <strong>Cédula:</strong> <span id="detCedula"></span><br>
+                                <strong>Teléfono:</strong> <span id="detTelefono"></span><br>
+                                <strong>Correo:</strong> <span id="detCorreo"></span><br>
+                                <strong>Fecha Ingreso:</strong> <span id="detIngreso"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Extra -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header"><button class="accordion-button collapsed fw-bold py-2" type="button" data-bs-toggle="collapse" data-bs-target="#col2">Información Adicional</button></h2>
+                        <div id="col2" class="accordion-collapse collapse" data-bs-parent="#accordionDetalles">
+                            <div class="accordion-body small bg-body">
+                                <strong>Estado Civil:</strong> <span id="detCivil"></span><br>
+                                <strong>Académico:</strong> <span id="detAcademico"></span><br>
+                                <strong>Dirección:</strong> <span id="detDir"></span><br>
+                                <strong>Tipo Sangre:</strong> <span id="detSangre" class="text-danger fw-bold"></span><br>
+                                <strong>Banco Nómina:</strong> <span id="detBanco"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer p-2 bg-light">
+                <button type="button" class="btn btn-secondary w-100 fw-bold" data-bs-dismiss="modal">Cerrar Ficha</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- 3. MODAL: EDITAR POSICIÓN EN EL ÁRBOL -->
+<!-- ========================================== -->
+<div class="modal fade" id="modalEditPosition" tabindex="-1" data-bs-backdrop="false">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border border-warning shadow-lg">
+            <div class="modal-header bg-warning text-dark py-2">
+                <h6 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2"></i>Cambiar Jefe</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body bg-body-tertiary">
+                <input type="hidden" id="editNodeId">
+                <p class="text-center fw-bold mb-3 text-primary" id="editNodeName"></p>
+                <label class="form-label fw-bold small text-muted">Nuevo Supervisor Directo:</label>
+                <select id="selectNuevoJefe" class="form-select shadow-sm"></select>
+            </div>
+            <div class="modal-footer p-2 border-0">
+                <button type="button" class="btn btn-warning w-100 fw-bold" onclick="confirmarEdicionPosicion()">Aplicar Cambio</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- 4. MODAL: AGREGAR AL ÁRBOL -->
+<!-- ========================================== -->
+<div class="modal fade" id="modalAddNode" tabindex="-1" data-bs-backdrop="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border border-success shadow-lg">
+            <div class="modal-header bg-success text-white py-2">
                 <h5 class="modal-title"><i class="bi bi-diagram-3-fill me-2"></i>Agregar al Organigrama</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
@@ -193,77 +265,10 @@ include '../Includes/sidebar.php';
                 <div class="mb-3">
                     <label class="form-label fw-bold small text-success">2. ¿A quién le reporta? (Jefe Directo):</label>
                     <select id="selectJefeAgregar" class="form-select shadow-sm border-success"></select>
-                    <small class="text-muted mt-1 d-block"><i class="bi bi-info-circle me-1"></i>Si elige "Ninguno", será el Director Principal.</small>
                 </div>
             </div>
-            <div class="modal-footer border-0">
-                <button type="button" class="btn btn-success w-100 fw-bold rounded-pill" onclick="confirmarAgregar()">Añadir al Árbol</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ========================================== -->
-<!-- 3. MODAL: EDITAR POSICIÓN EN EL ÁRBOL -->
-<!-- ========================================== -->
-<div class="modal fade" id="modalEditPosition" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header bg-warning text-dark">
-                <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2"></i>Cambiar Jefe</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body bg-body-tertiary">
-                <input type="hidden" id="editNodeId">
-                <p class="text-center fw-bold mb-3" id="editNodeName">Nombre Empleado</p>
-                
-                <label class="form-label fw-bold small text-muted">Nuevo Supervisor Directo:</label>
-                <select id="selectNuevoJefe" class="form-select shadow-sm"></select>
-            </div>
-            <div class="modal-footer border-0">
-                <button type="button" class="btn btn-warning w-100 fw-bold rounded-pill" onclick="confirmarEdicionPosicion()">Aplicar Cambio</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- ========================================== -->
-<!-- 4. MODAL: VER DETALLES (SOLO LECTURA) -->
-<!-- ========================================== -->
-<div class="modal fade" id="modalVerDetalles" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header bg-info text-dark border-0 pb-0">
-                <button type="button" class="btn-close" data-bs-dismiss="modal" style="position: absolute; right: 15px; top: 15px;"></button>
-            </div>
-            <div class="modal-body bg-info text-center pt-0 rounded-bottom">
-                <img id="detImg" src="" class="rounded-circle border border-3 border-white shadow-sm mb-3" style="width: 100px; height: 100px; object-fit: cover;">
-                <h5 class="fw-bold mb-0" id="detName">Nombre Apellido</h5>
-                <p class="mb-3 text-dark opacity-75 fw-bold" id="detTitle">Cargo</p>
-            </div>
-            <div class="modal-body p-4 bg-body">
-                <ul class="list-group list-group-flush small">
-                    <li class="list-group-item px-0 d-flex justify-content-between">
-                        <span class="text-muted"><i class="bi bi-person-vcard me-2"></i>Cédula:</span>
-                        <strong id="detCedula"></strong>
-                    </li>
-                    <li class="list-group-item px-0 d-flex justify-content-between">
-                        <span class="text-muted"><i class="bi bi-telephone me-2"></i>Teléfono:</span>
-                        <strong id="detTelefono"></strong>
-                    </li>
-                    <li class="list-group-item px-0 d-flex justify-content-between">
-                        <span class="text-muted"><i class="bi bi-envelope me-2"></i>Correo:</span>
-                        <strong id="detCorreo"></strong>
-                    </li>
-                    <li class="list-group-item px-0 d-flex justify-content-between">
-                        <span class="text-muted"><i class="bi bi-calendar-check me-2"></i>Ingreso:</span>
-                        <strong id="detIngreso"></strong>
-                    </li>
-                    <li class="list-group-item px-0 d-flex justify-content-between border-0">
-                        <span class="text-muted"><i class="bi bi-activity me-2"></i>Estado:</span>
-                        <strong id="detEstado" class="text-success"></strong>
-                    </li>
-                </ul>
+            <div class="modal-footer p-2 border-0">
+                <button type="button" class="btn btn-success w-100 fw-bold" onclick="confirmarAgregar()">Añadir al Árbol</button>
             </div>
         </div>
     </div>
@@ -273,106 +278,87 @@ include '../Includes/sidebar.php';
     const dataTree = <?= $jerarquia_actual ?>;
     const todosEmpleados = <?= $personal_json ?>;
 
-    // INICIALIZACIÓN DEL GRÁFICO (REPARADO Y CON ZOOM)
     let chart = new OrgChart(document.getElementById("tree"), {
         template: "luba",
         enableDragDrop: true,
-        
-        // 1. SOLUCIÓN DEL ZOOM (Doble configuración para asegurar compatibilidad)
         mouseScrool: OrgChart.action.zoom,
-        mouseScroll: OrgChart.action.zoom, 
-        
-        // 2. HERRAMIENTAS VISUALES DE ZOOM (Botones en pantalla)
-        toolbar: {
-            zoom: true,
-            fit: true
-        },
-        
-        // 3. APAGAR EL MENÚ DEFAULT EN INGLÉS
+        toolbar: { zoom: true, fit: true },
         nodeMenu: null, 
-
-        nodeBinding: { 
-            field_0: "name", 
-            field_1: "title", 
-            img_0: "img" 
-        },
+        nodeBinding: { field_0: "name", field_1: "title", img_0: "img" },
         nodes: dataTree
     });
 
-    // ========================================================
-    // 4. ELIMINAR EL OFFCANVAS EN INGLÉS Y ABRIR NUESTRO MENÚ
-    // ========================================================
-    chart.on('click', function (sender, args) {
-        let id = args.node.id;
-        let nodeData = chart.get(id);
-        
-        // Llenar el modal del menú
-        document.getElementById('opcionesNodeId').value = id;
+    // ABORTAR PANEL DEFAULT Y ABRIR NUESTRO MODAL
+    chart.editUI.on('show', function (sender, nodeId) {
+        let nodeData = chart.get(nodeId);
+        document.getElementById('opcionesNodeId').value = nodeId;
         document.getElementById('opcionesNodeName').innerText = nodeData.name;
-        
-        // Mostrar menú personalizado
         new bootstrap.Modal(document.getElementById('modalOpcionesNodo')).show();
-        
-        // RETORNAR FALSE ES LO QUE BLOQUEA EL PANEL EN INGLÉS DE ORGCHART.JS
         return false; 
     });
 
 
-    // ========================================================
-    // GESTIÓN DE LAS 3 OPCIONES DEL MENÚ
-    // ========================================================
+    // GESTIÓN DEL MENÚ
     function abrirDesdeMenu(accion) {
-        // Cerrar el menú actual
         bootstrap.Modal.getInstance(document.getElementById('modalOpcionesNodo')).hide();
-        
         let id = document.getElementById('opcionesNodeId').value;
         let node = chart.get(id);
 
-        if (accion === 'detalles') {
-            document.getElementById('detImg').src = node.img;
-            document.getElementById('detName').innerText = node.name;
-            document.getElementById('detTitle').innerText = node.title;
-            document.getElementById('detCedula').innerText = node.cedula || 'N/A';
-            document.getElementById('detTelefono').innerText = node.telefono || 'N/A';
-            document.getElementById('detCorreo').innerText = node.correo || 'N/A';
-            document.getElementById('detIngreso').innerText = node.ingreso || 'N/A';
-            document.getElementById('detEstado').innerText = node.estado || 'N/A';
-            new bootstrap.Modal(document.getElementById('modalVerDetalles')).show();
-        } 
-        else if (accion === 'editar') {
-            document.getElementById('editNodeId').value = node.id;
-            document.getElementById('editNodeName').innerText = node.name;
+        setTimeout(() => {
+            if (accion === 'detalles') {
+                document.getElementById('detImg').src = node.img;
+                document.getElementById('detName').innerText = node.name;
+                document.getElementById('detTitle').innerText = node.title;
+                document.getElementById('detCedula').innerText = node.cedula;
+                document.getElementById('detTelefono').innerText = node.telefono;
+                document.getElementById('detCorreo').innerText = node.correo;
+                document.getElementById('detIngreso').innerText = node.ingreso;
+                document.getElementById('detEstado').innerText = node.estado;
+                
+                document.getElementById('detCivil').innerText = node.estado_civil || 'S/R';
+                document.getElementById('detAcademico').innerText = node.nivel_academico || 'S/R';
+                document.getElementById('detDir').innerText = node.direccion || 'S/R';
+                document.getElementById('detSangre').innerText = node.tipo_sangre || 'S/R';
+                document.getElementById('detBanco').innerText = node.banco || 'S/R';
+                
+                new bootstrap.Modal(document.getElementById('modalVerDetalles')).show();
+            } 
+            else if (accion === 'editar') {
+                document.getElementById('editNodeId').value = node.id;
+                document.getElementById('editNodeName').innerText = node.name;
 
-            let selectJefe = document.getElementById('selectNuevoJefe');
-            selectJefe.innerHTML = '<option value="">Ninguno (Máxima Autoridad)</option>';
-            
-            for (let j_id in chart.nodes) {
-                if (j_id != id) { // No puede ser su propio jefe
-                    let n = chart.nodes[j_id];
-                    let option = new Option(n.name + ' (' + n.title + ')', n.id);
-                    if (node.pid == n.id) option.selected = true;
-                    selectJefe.add(option);
+                let selectJefe = document.getElementById('selectNuevoJefe');
+                selectJefe.innerHTML = '<option value="">Ninguno (Máxima Autoridad)</option>';
+                
+                // REPARACIÓN DEL UNDEFINED: Usar Object.values y validar propiedades reales
+                Object.values(chart.nodes).forEach(n => {
+                    if (n.id && n.name && n.id != id) {
+                        let option = new Option(n.name + ' (' + n.title + ')', n.id);
+                        if (node.pid == n.id) option.selected = true;
+                        selectJefe.add(option);
+                    }
+                });
+                new bootstrap.Modal(document.getElementById('modalEditPosition')).show();
+            } 
+            else if (accion === 'redirigir_crud') {
+                // REDIRECCIÓN A PERSONAL CON PARÁMETRO DE AUTO-EDICIÓN
+                window.location.href = `personal.php?tipo=${node.tipo_personal}&auto_edit=${node.id}`;
+            }
+            else if (accion === 'eliminar') {
+                if(confirm("¿Seguro que desea quitar a " + node.name + " del esquema gráfico?")) {
+                    chart.removeNode(id);
                 }
             }
-            new bootstrap.Modal(document.getElementById('modalEditPosition')).show();
-        } 
-        else if (accion === 'eliminar') {
-            if(confirm("¿Seguro que desea quitar a " + node.name + " del esquema gráfico?")) {
-                chart.removeNode(id);
-            }
-        }
+        }, 350); 
     }
 
-    // ========================================================
-    // FUNCIONES RESTANTES (Agregar, Confirmar Edición, Guardar)
-    // ========================================================
+    // AÑADIR NODO
     function abrirModalAgregar() {
         let selectJefe = document.getElementById('selectJefeAgregar');
         selectJefe.innerHTML = '<option value="">Ninguno (Será Nodo Raíz / Director)</option>';
-        for (let id in chart.nodes) {
-            let n = chart.nodes[id];
-            selectJefe.add(new Option(n.name + ' (' + n.title + ')', n.id));
-        }
+        Object.values(chart.nodes).forEach(n => {
+            if (n.id && n.name) selectJefe.add(new Option(n.name + ' (' + n.title + ')', n.id));
+        });
         document.getElementById('selectEmpleado').value = ""; 
         new bootstrap.Modal(document.getElementById('modalAddNode')).show();
     }
@@ -392,7 +378,8 @@ include '../Includes/sidebar.php';
                 name: empData.apellidos + ', ' + empData.nombres,
                 title: empData.cargo,
                 img: empData.foto ? empData.foto : 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
-                cedula: empData.cedula, telefono: empData.telefono || 'S/R',
+                tipo_personal: empData.tipo_personal_id,
+                cedula: 'V-'+empData.cedula, telefono: empData.telefono || 'S/R',
                 correo: empData.correo_electronico || 'S/R', ingreso: empData.fecha_ingreso, estado: empData.estado_laboral
             });
             bootstrap.Modal.getInstance(document.getElementById('modalAddNode')).hide();
@@ -403,18 +390,14 @@ include '../Includes/sidebar.php';
         let id = document.getElementById('editNodeId').value;
         let pid = document.getElementById('selectNuevoJefe').value;
         if (pid === "") pid = null;
-
         let nodeData = chart.get(id);
         nodeData.pid = pid;
         chart.updateNode(nodeData);
-
         bootstrap.Modal.getInstance(document.getElementById('modalEditPosition')).hide();
     }
 
     function vaciarArbol() {
-        if(confirm('¿Seguro que desea limpiar todo el esquema visual? (Recuerde Guardar Cambios al final)')) {
-            chart.load([]); 
-        }
+        if(confirm('¿Seguro que desea limpiar todo el esquema visual? (Recuerde Guardar Cambios)')) chart.load([]); 
     }
 
     async function guardarOrganigrama() {
@@ -424,38 +407,61 @@ include '../Includes/sidebar.php';
 
         try {
             let nodosExtraidos = [];
-            for (let key in chart.nodes) {
-                let n = chart.nodes[key];
-                nodosExtraidos.push({
-                    id: n.id,
-                    pid: (n.pid === undefined || n.pid === null || n.pid === "") ? null : n.pid
-                });
-            }
-
+            Object.values(chart.nodes).forEach(n => {
+                if(n.id && n.name) {
+                    nodosExtraidos.push({ id: n.id, pid: (n.pid === undefined || n.pid === null || n.pid === "") ? null : n.pid });
+                }
+            });
             let formData = new FormData();
             formData.append('nodos', JSON.stringify(nodosExtraidos));
-
             let response = await fetch('organigrama.php', { method: 'POST', body: formData });
             let result = await response.json();
-
             if(result.success) {
                 btn.classList.replace('btn-primary', 'btn-success');
                 btn.innerHTML = '<i class="bi bi-check-circle me-1"></i> Guardado Exitoso';
-            } else {
-                alert("Error al guardar: " + result.error);
-                btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Cambios';
             }
-        } catch (error) {
-            alert("Error de red.");
-            btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Cambios';
-        } finally {
-            setTimeout(() => {
-                btn.classList.replace('btn-success', 'btn-primary');
-                btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Cambios';
-                btn.disabled = false;
-            }, 2500);
+        } catch (error) {} finally {
+            setTimeout(() => { btn.classList.replace('btn-success', 'btn-primary'); btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Cambios'; btn.disabled = false; }, 2000);
         }
     }
+
+    // ==========================================
+    // SCRIPT PARA HACER LOS MODALES ARRASTRABLES
+    // ==========================================
+    document.querySelectorAll('.modal-header').forEach(header => {
+        let isDragging = false;
+        let startX, startY, currentX, currentY;
+        let modalContent = header.closest('.modal-content');
+        let xOffset = 0, yOffset = 0;
+
+        header.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX - xOffset;
+            startY = e.clientY - yOffset;
+            modalContent.style.transition = 'none'; // Quitar animacion al arrastrar
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            currentX = e.clientX - startX;
+            currentY = e.clientY - startY;
+            xOffset = currentX;
+            yOffset = currentY;
+            modalContent.style.transform = `translate(${currentX}px, ${currentY}px)`;
+        });
+
+        document.addEventListener('mouseup', () => { isDragging = false; });
+        
+        // Reiniciar posición al cerrar el modal
+        let modalElement = header.closest('.modal');
+        if(modalElement) {
+            modalElement.addEventListener('hidden.bs.modal', () => {
+                xOffset = 0; yOffset = 0;
+                modalContent.style.transform = 'translate(0px, 0px)';
+            });
+        }
+    });
+
 </script>
 
 <?php include '../Includes/footer.php'; ?>

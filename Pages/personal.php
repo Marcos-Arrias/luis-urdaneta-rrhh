@@ -563,4 +563,33 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
     </div>
 </div>
 
+<!-- SCRIPT DE AUTO-EDICIÓN DESDE ORGANIGRAMA -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    // Leer la URL para ver si trae el comando de auto_edit
+    const urlParams = new URLSearchParams(window.location.search);
+    const autoEditId = urlParams.get('auto_edit');
+
+    if (autoEditId) {
+        // Buscar el botón de edición de esa persona específica
+        let botonesEdicion = document.querySelectorAll('button[onclick="editarRegistro(this)"]');
+        
+        for (let btn of botonesEdicion) {
+            let data = JSON.parse(btn.getAttribute('data-empleado'));
+            
+            // Si el ID coincide, simulamos el clic para abrir el formulario
+            if (data.id == autoEditId) {
+                setTimeout(() => {
+                    btn.click();
+                }, 500); // Pequeño retraso visual
+                break;
+            }
+        }
+        
+        // Limpiamos la URL para que si recarga la página, no se vuelva a abrir solo
+        window.history.replaceState(null, '', window.location.pathname + '?tipo=' + urlParams.get('tipo'));
+    }
+});
+</script>
+
 <?php include '../Includes/footer.php'; ?>
