@@ -22,6 +22,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             registrarHistorial($pdo, 'Cronograma', 'CREAR', "Creó actividad: {$_POST['titulo']}.");
             $pdo->commit(); header("Location: cronograma.php?fecha_filtro=" . $_POST['fecha'] . "&msg=creado"); exit;
             
+        } elseif ($a === 'editar') {
+            $id = $_POST['id'];
+            $pdo->prepare("UPDATE cronograma_eventos SET fecha=?, hora_inicio=?, hora_fin=?, titulo=?, descripcion=? WHERE id=?")
+                ->execute([$_POST['fecha'], $_POST['hora_inicio'], $_POST['hora_fin'], $_POST['titulo'], $_POST['descripcion'], $id]);
+
+            // Actualizar lista de involucrados
+            $pdo->prepare("DELETE FROM cronograma_participantes WHERE evento_id=?")->execute([$id]);
+            if (!empty($_POST['involucrados'])) {
+                $stmtPart = $pdo->prepare("INSERT INTO cronograma_participantes (evento_id, personal_id) VALUES (?, ?)");
+                foreach($_POST['involucrados'] as $p_id) {
+                    $stmtPart->execute([$id, $p_id]);
+                }
+            }
+
+            registrarHistorial($pdo, 'Cronograma', 'ACTUALIZAR', "Actualizó actividad: {$_POST['titulo']}.");
+            $pdo->commit(); header("Location: cronograma.php?fecha_filtro=" . $_POST['fecha'] . "&msg=editado"); exit;
+
         } elseif ($a === 'eliminar') {
             $pdo->prepare("DELETE FROM cronograma_eventos WHERE id=?")->execute([$_POST['id']]);
             registrarHistorial($pdo, 'Cronograma', 'ELIMINAR', "Eliminó actividad.");
@@ -35,12 +52,13 @@ $ayer = date('Y-m-d', strtotime($fechaFiltro . ' -1 day'));
 $manana = date('Y-m-d', strtotime($fechaFiltro . ' +1 day'));
 $hoy = date('Y-m-d');
 
-// Consulta de actividades del día
+// Consulta de actividades del día (trayendo nombres e IDs para el select de participantes)
 $actividades = $pdo->prepare("
     SELECT e.*, 
     (SELECT GROUP_CONCAT(CONCAT(p.apellidos, ' ', p.nombres) SEPARATOR '||') 
      FROM cronograma_participantes cp JOIN personal p ON cp.personal_id = p.id 
-     WHERE cp.evento_id = e.id) as lista_nombres
+     WHERE cp.evento_id = e.id) as lista_nombres,
+    (SELECT GROUP_CONCAT(cp.personal_id) FROM cronograma_participantes cp WHERE cp.evento_id = e.id) as lista_ids
     FROM cronograma_eventos e 
     WHERE e.fecha = ? ORDER BY e.hora_inicio ASC
 ");
@@ -78,7 +96,6 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
 .agenda-card::before { content: ''; position: absolute; left: -1.5rem; top: 1.2rem; width: 15px; height: 3px; background: var(--bs-primary); }
 .day-card { transition: all 0.2s ease-in-out; border-radius: 12px; min-width: 105px; }
 .day-card:hover { transform: translateY(-3px); }
-.dot-indicator { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -86,7 +103,7 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
         <h2 class="fw-bold mb-0"><i class="bi bi-calendar2-event me-2 text-primary"></i> Agenda Diaria</h2>
         <p class="text-muted small mb-0">Eventos y actividades programadas para la fecha.</p>
     </div>
-    <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold" data-bs-toggle="modal" data-bs-target="#modalRegistro">
+    <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold" data-bs-toggle="modal" data-bs-target="#modalRegistro" onclick="limpiarModalCronograma()">
         <i class="bi bi-plus-lg me-1"></i> Nueva Actividad
     </button>
 </div>
@@ -159,7 +176,18 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
             <div class="agenda-card">
                 <div class="d-flex justify-content-between align-items-start">
                     <h4 class="fw-bold mb-2 text-body"><?= htmlspecialchars($d['titulo']) ?></h4>
-                    <form action="" method="POST" onsubmit="return confirm('¿Borrar actividad?');"><input type="hidden" name="accion" value="eliminar"><input type="hidden" name="id" value="<?= $d['id'] ?>"><button class="btn btn-sm text-danger border-0 p-0 fs-5"><i class="bi bi-x-circle-fill"></i></button></form>
+                    <div class="d-flex align-items-center">
+                        <!-- BOTÓN EDITAR ACTIVIDAD -->
+                        <button type="button" class="btn btn-sm text-warning border-0 p-0 fs-5 me-2" onclick='cargarEdicionCronograma(<?= htmlspecialchars(json_encode($d), ENT_QUOTES, 'UTF-8') ?>)' title="Editar actividad">
+                            <i class="bi bi-pencil-fill"></i>
+                        </button>
+                        <!-- BOTÓN BORRAR ACTIVIDAD -->
+                        <form action="" method="POST" onsubmit="return confirm('¿Borrar actividad?');">
+                            <input type="hidden" name="accion" value="eliminar">
+                            <input type="hidden" name="id" value="<?= $d['id'] ?>">
+                            <button class="btn btn-sm text-danger border-0 p-0 fs-5" title="Eliminar"><i class="bi bi-x-circle-fill"></i></button>
+                        </form>
+                    </div>
                 </div>
                 <p class="text-muted mb-3"><?= htmlspecialchars($d['descripcion']) ?: 'Sin descripción detallada.' ?></p>
                 <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -182,23 +210,66 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
     <?php endif; ?>
 </div>
 
-<!-- MODAL REGISTRO -->
+<!-- MODAL REGISTRO / EDICIÓN -->
 <div class="modal fade" id="modalRegistro" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
-    <div class="modal-header bg-primary text-white"><h5 class="modal-title">Agregar Actividad</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+    <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="cronModalTitulo">Agregar Actividad</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+    </div>
     <form action="" method="POST"><div class="modal-body">
-        <input type="hidden" name="accion" value="crear">
-        <div class="mb-3"><label class="form-label small fw-bold">Título</label><input type="text" name="titulo" class="form-control" required></div>
-        <div class="row mb-3"><div class="col-md-6"><label class="form-label small fw-bold">Inicio</label><input type="time" name="hora_inicio" class="form-control" required></div><div class="col-md-6"><label class="form-label small fw-bold">Fin</label><input type="time" name="hora_fin" class="form-control" required></div></div>
-        <div class="mb-3"><label class="form-label small fw-bold">Fecha</label><input type="date" name="fecha" class="form-control" value="<?= $fechaFiltro ?>" required></div>
+        <input type="hidden" name="accion" id="cron_accion" value="crear">
+        <input type="hidden" name="id" id="cron_id">
+        
+        <div class="mb-3"><label class="form-label small fw-bold">Título</label><input type="text" name="titulo" id="cron_titulo" class="form-control" required></div>
+        <div class="row mb-3"><div class="col-md-6"><label class="form-label small fw-bold">Inicio</label><input type="time" name="hora_inicio" id="cron_inicio" class="form-control" required></div><div class="col-md-6"><label class="form-label small fw-bold">Fin</label><input type="time" name="hora_fin" id="cron_fin" class="form-control" required></div></div>
+        <div class="mb-3"><label class="form-label small fw-bold">Fecha</label><input type="date" name="fecha" id="cron_fecha" class="form-control" value="<?= $fechaFiltro ?>" required></div>
         <div class="mb-3">
             <label class="form-label small fw-bold">Vincular Personal</label>
-            <select name="involucrados[]" class="form-select" multiple size="4">
+            <select name="involucrados[]" id="cron_involucrados" class="form-select" multiple size="4">
                 <?php foreach ($todo_personal as $p): ?>
                     <option value="<?= $p['id'] ?>"><?= htmlspecialchars($p['nombre']) ?></option>
                 <?php endforeach; ?>
             </select>
+            <small class="text-muted d-block mt-1">Mantenga presionada la tecla Ctrl para seleccionar varios.</small>
         </div>
-        <div class="mb-3"><label class="form-label small fw-bold">Notas</label><textarea name="descripcion" class="form-control" rows="2"></textarea></div>
+        <div class="mb-3"><label class="form-label small fw-bold">Notas</label><textarea name="descripcion" id="cron_descripcion" class="form-control" rows="2"></textarea></div>
     </div><div class="modal-footer"><button type="submit" class="btn btn-primary w-100 fw-bold">Guardar Actividad</button></div></form>
 </div></div></div>
+
+<script>
+function limpiarModalCronograma() {
+    document.getElementById('cronModalTitulo').innerText = 'Agregar Actividad';
+    document.getElementById('cron_accion').value = 'crear';
+    document.getElementById('cron_id').value = '';
+    document.getElementById('cron_titulo').value = '';
+    document.getElementById('cron_inicio').value = '';
+    document.getElementById('cron_fin').value = '';
+    document.getElementById('cron_fecha').value = '<?= $fechaFiltro ?>';
+    document.getElementById('cron_descripcion').value = '';
+    
+    let select = document.getElementById('cron_involucrados');
+    Array.from(select.options).forEach(opt => opt.selected = false);
+}
+
+function cargarEdicionCronograma(d) {
+    document.getElementById('cronModalTitulo').innerText = 'Editar Actividad';
+    document.getElementById('cron_accion').value = 'editar';
+    document.getElementById('cron_id').value = d.id;
+    document.getElementById('cron_titulo').value = d.titulo;
+    document.getElementById('cron_inicio').value = d.hora_inicio;
+    document.getElementById('cron_fin').value = d.hora_fin;
+    document.getElementById('cron_fecha').value = d.fecha;
+    document.getElementById('cron_descripcion').value = d.descripcion || '';
+    
+    // Pre-seleccionar a los involucrados
+    let ids = d.lista_ids ? d.lista_ids.split(',').map(Number) : [];
+    let select = document.getElementById('cron_involucrados');
+    Array.from(select.options).forEach(opt => {
+        opt.selected = ids.includes(Number(opt.value));
+    });
+
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalRegistro')).show();
+}
+</script>
+
 <?php include '../Includes/footer.php'; ?>

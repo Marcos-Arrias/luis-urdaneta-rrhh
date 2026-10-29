@@ -14,6 +14,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             registrarHistorial($pdo, 'Asistencias', 'CREAR', "Registró {$_POST['estado_asistencia']} el {$_POST['fecha']}.");
             header("Location: asistencias.php?fecha_filtro=" . $_POST['fecha'] . "&msg=creado"); exit;
             
+        } elseif ($a === 'editar') {
+            $id = $_POST['id'];
+            $hora_entrada = !empty($_POST['hora_entrada']) ? $_POST['hora_entrada'] : null;
+            $hora_salida = !empty($_POST['hora_salida']) ? $_POST['hora_salida'] : null;
+
+            $pdo->prepare("UPDATE asistencias SET personal_id=?, fecha=?, hora_entrada=?, hora_salida=?, estado_asistencia=?, observaciones=? WHERE id=?")
+                ->execute([$_POST['personal_id'], $_POST['fecha'], $hora_entrada, $hora_salida, $_POST['estado_asistencia'], $_POST['observaciones'], $id]);
+
+            registrarHistorial($pdo, 'Asistencias', 'ACTUALIZAR', "Actualizó novedad de {$_POST['estado_asistencia']}.");
+            header("Location: asistencias.php?fecha_filtro=" . $_POST['fecha'] . "&msg=editado"); exit;
+
         } elseif ($a === 'eliminar') {
             $pdo->prepare("DELETE FROM asistencias WHERE id=?")->execute([$_POST['id']]);
             registrarHistorial($pdo, 'Asistencias', 'ELIMINAR', "Eliminó un registro de asistencia.");
@@ -25,7 +36,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// FECHAS RELATIVAS PARA NAVEGACIÓN
 $fechaFiltro = $_GET['fecha_filtro'] ?? date('Y-m-d');
 $ayer = date('Y-m-d', strtotime($fechaFiltro . ' -1 day'));
 $manana = date('Y-m-d', strtotime($fechaFiltro . ' +1 day'));
@@ -33,7 +43,7 @@ $hoy = date('Y-m-d');
 
 // Consulta de asistencias del día seleccionado
 $asistencias = $pdo->prepare("
-    SELECT a.*, p.nombres, p.apellidos, t.nombre as tipo_personal 
+    SELECT a.*, p.nombres, p.apellidos, t.nombre as tipo_personal, t.id as tipo_personal_id 
     FROM asistencias a 
     JOIN personal p ON a.personal_id = p.id
     LEFT JOIN personal_cargos pc ON p.id = pc.personal_id AND pc.estado_cargo = 'Vigente'
@@ -45,7 +55,7 @@ $asistencias = $pdo->prepare("
 $asistencias->execute([$fechaFiltro]);
 $datos = $asistencias->fetchAll();
 
-// Cargar personal activo para el modal
+// Cargar personal activo agrupado
 $todo_personal_raw = $pdo->query("
     SELECT p.id, CONCAT(p.apellidos, ', ', p.nombres) as nombre, t.nombre as tipo
     FROM personal p 
@@ -61,7 +71,6 @@ foreach ($todo_personal_raw as $p) {
     $personal_agrupado[$p['tipo']][] = ['id' => $p['id'], 'nombre' => $p['nombre']];
 }
 
-// KPI del día seleccionado
 $kpi_ausentes = 0; $kpi_retardos = 0; $kpi_justificados = 0; $kpi_presentes = 0;
 foreach($datos as $d) {
     if($d['estado_asistencia'] == 'Ausente') $kpi_ausentes++;
@@ -70,7 +79,7 @@ foreach($datos as $d) {
     if($d['estado_asistencia'] == 'Presente') $kpi_presentes++;
 }
 
-// CONSULTA PARA EL SEMÁFORO DE LOS 7 DÍAS CERCANOS (-3 a +3 días)
+// Semáforo de días (-3 a +3 días)
 $dia_inicio = date('Y-m-d', strtotime($fechaFiltro . ' -3 days'));
 $dia_fin = date('Y-m-d', strtotime($fechaFiltro . ' +3 days'));
 
@@ -108,16 +117,14 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
         <h2 class="fw-bold mb-0"><i class="bi bi-person-bounding-box me-2 text-primary"></i> Control de Novedades</h2>
         <p class="text-muted small mb-0">Gestión de inasistencias y llegadas tardías.</p>
     </div>
-    <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold" data-bs-toggle="modal" data-bs-target="#modalRegistro"><i class="bi bi-plus-lg me-1"></i> Reportar Novedad</button>
+    <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold" data-bs-toggle="modal" data-bs-target="#modalRegistro" onclick="limpiarModalAsistencia()">
+        <i class="bi bi-plus-lg me-1"></i> Reportar Novedad
+    </button>
 </div>
 
-<!-- ======================================================== -->
-<!-- NUEVA BARRA NAVEGADORA DE DÍAS Y SEMÁFORO DE ESTADOS -->
-<!-- ======================================================== -->
+<!-- NAVEGACIÓN Y SEMÁFORO -->
 <div class="card shadow-sm border-0 rounded-4 mb-4 bg-body-tertiary">
     <div class="card-body p-3">
-        
-        <!-- Botones de Salto Rápido -->
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
             <div class="btn-group shadow-sm">
                 <a href="?fecha_filtro=<?= $ayer ?>" class="btn btn-outline-secondary btn-sm px-3 fw-bold">
@@ -131,14 +138,12 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
                 </a>
             </div>
 
-            <!-- Selector de Fecha con Auto-Submit -->
             <form method="GET" class="d-flex align-items-center gap-2 m-0">
                 <span class="small fw-bold text-muted"><i class="bi bi-calendar3 me-1"></i>Seleccionar Fecha:</span>
                 <input type="date" name="fecha_filtro" class="form-control form-control-sm shadow-sm" value="<?= $fechaFiltro ?>" onchange="this.form.submit()" style="width: 155px;">
             </form>
         </div>
 
-        <!-- Tira Interactiva de 7 Días con Código de Colores -->
         <div class="d-flex overflow-auto gap-2 text-center pb-1">
             <?php 
             for ($i = -3; $i <= 3; $i++): 
@@ -157,7 +162,6 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
                 </span>
                 <h6 class="mb-2 fw-black <?= $esSeleccionado ? 'text-white' : '' ?>"><?= $fechaNum ?></h6>
                 
-                <!-- Indicadores de Color -->
                 <div class="d-flex justify-content-center align-items-center gap-1" style="min-height: 14px;">
                     <?php if ($datosSemaforo && $datosSemaforo['total'] > 0): ?>
                         <?php if ($datosSemaforo['presentes'] > 0): ?><span class="dot-indicator bg-success" title="<?= $datosSemaforo['presentes'] ?> Presentes"></span><?php endif; ?>
@@ -171,14 +175,6 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
             </a>
             <?php endfor; ?>
         </div>
-
-        <div class="d-flex justify-content-center gap-3 mt-2 pt-2 border-top small text-muted" style="font-size: 0.75rem;">
-            <span><span class="dot-indicator bg-success me-1"></span>Presente</span>
-            <span><span class="dot-indicator bg-danger me-1"></span>Ausente</span>
-            <span><span class="dot-indicator bg-warning me-1"></span>Retardo</span>
-            <span><span class="dot-indicator bg-info me-1"></span>Justificado</span>
-        </div>
-
     </div>
 </div>
 
@@ -237,8 +233,17 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
                             ?>
                         </td>
                         <td class="text-muted small"><i class="bi bi-quote opacity-50 me-1"></i><?= htmlspecialchars($d['observaciones']) ?: 'Sin observaciones registradas.' ?></td>
-                        <td class="text-center">
-                            <form action="" method="POST" onsubmit="return confirm('¿Deshacer este registro?');"><input type="hidden" name="accion" value="eliminar"><input type="hidden" name="id" value="<?= $d['id'] ?>"><button class="btn btn-sm btn-light text-danger shadow-sm rounded-circle"><i class="bi bi-trash"></i></button></form>
+                        <td class="text-center text-nowrap">
+                            <!-- BOTÓN EDITAR NOVEDAD -->
+                            <button class="btn btn-sm btn-light text-warning shadow-sm rounded-circle me-1" onclick='cargarEdicionAsistencia(<?= htmlspecialchars(json_encode($d), ENT_QUOTES, 'UTF-8') ?>)' title="Editar Registro">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <!-- BOTÓN ELIMINAR NOVEDAD -->
+                            <form action="" method="POST" class="d-inline" onsubmit="return confirm('¿Deshacer este registro?');">
+                                <input type="hidden" name="accion" value="eliminar">
+                                <input type="hidden" name="id" value="<?= $d['id'] ?>">
+                                <button class="btn btn-sm btn-light text-danger shadow-sm rounded-circle" title="Eliminar"><i class="bi bi-trash"></i></button>
+                            </form>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -250,13 +255,17 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
     </div>
 </div>
 
-<!-- Modal Registro -->
+<!-- MODAL REGISTRO / EDICIÓN -->
 <div class="modal fade" id="modalRegistro" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
-    <div class="modal-header bg-primary text-white"><h5 class="modal-title">Registrar Control de Asistencia</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+    <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="asistModalTitulo">Registrar Control de Asistencia</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+    </div>
     <form action="" method="POST"><div class="modal-body">
-        <input type="hidden" name="accion" value="crear">
+        <input type="hidden" name="accion" id="asist_accion" value="crear">
+        <input type="hidden" name="id" id="asist_id">
         
-        <div class="mb-3"><label class="form-label small fw-bold">Fecha</label><input type="date" name="fecha" class="form-control" value="<?= $fechaFiltro ?>" required></div>
+        <div class="mb-3"><label class="form-label small fw-bold">Fecha</label><input type="date" name="fecha" id="asist_fecha" class="form-control" value="<?= $fechaFiltro ?>" required></div>
         <div class="mb-3">
             <label class="form-label small fw-bold">Tipo de Personal</label>
             <select id="select_tipo" class="form-select" required onchange="cargarPersonal()">
@@ -274,21 +283,21 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
         </div>
         <div class="mb-3">
             <label class="form-label small fw-bold">Estado Reportado</label>
-            <select name="estado_asistencia" class="form-select" required>
+            <select name="estado_asistencia" id="asist_estado" class="form-select" required>
                 <option value="Presente">Presente (Asistencia Regular)</option>
                 <option value="Ausente">Ausente (Injustificada)</option>
                 <option value="Falta Justificada">Falta Justificada / Permiso</option>
                 <option value="Retardo">Llegada con Retardo</option>
             </select>
         </div>
-        <div class="mb-3"><label class="form-label small fw-bold">Motivo / Observaciones</label><textarea name="observaciones" class="form-control" rows="2"></textarea></div>
+        <div class="mb-3"><label class="form-label small fw-bold">Motivo / Observaciones</label><textarea name="observaciones" id="asist_observaciones" class="form-control" rows="2"></textarea></div>
     </div><div class="modal-footer"><button type="submit" class="btn btn-primary w-100 fw-bold">Guardar Registro</button></div></form>
 </div></div></div>
 
 <script>
 const dataPersonal = <?= json_encode($personal_agrupado) ?>;
 
-function cargarPersonal() {
+function cargarPersonal(selectedId = null) {
     const tipo = document.getElementById('select_tipo').value;
     const select = document.getElementById('select_persona');
     select.innerHTML = '<option value="">Seleccione a la persona...</option>';
@@ -296,11 +305,40 @@ function cargarPersonal() {
     if(tipo && dataPersonal[tipo]) {
         select.disabled = false;
         dataPersonal[tipo].forEach(p => {
-            select.add(new Option(p.nombre, p.id)); 
+            let opt = new Option(p.nombre, p.id);
+            if(selectedId && selectedId == p.id) opt.selected = true;
+            select.add(opt); 
         });
     } else {
         select.disabled = true;
     }
+}
+
+function limpiarModalAsistencia() {
+    document.getElementById('asistModalTitulo').innerText = 'Registrar Control de Asistencia';
+    document.getElementById('asist_accion').value = 'crear';
+    document.getElementById('asist_id').value = '';
+    document.getElementById('asist_fecha').value = '<?= $fechaFiltro ?>';
+    document.getElementById('select_tipo').value = '';
+    document.getElementById('select_persona').innerHTML = '<option value="">Primero seleccione el tipo...</option>';
+    document.getElementById('select_persona').disabled = true;
+    document.getElementById('asist_estado').value = 'Presente';
+    document.getElementById('asist_observaciones').value = '';
+}
+
+function cargarEdicionAsistencia(d) {
+    document.getElementById('asistModalTitulo').innerText = 'Editar Control de Asistencia';
+    document.getElementById('asist_accion').value = 'editar';
+    document.getElementById('asist_id').value = d.id;
+    document.getElementById('asist_fecha').value = d.fecha;
+    document.getElementById('asist_estado').value = d.estado_asistencia;
+    document.getElementById('asist_observaciones').value = d.observaciones || '';
+    
+    // Seleccionar tipo y recargar las personas preseleccionando la correcta
+    document.getElementById('select_tipo').value = d.tipo_personal;
+    cargarPersonal(d.personal_id);
+
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalRegistro')).show();
 }
 </script>
 
