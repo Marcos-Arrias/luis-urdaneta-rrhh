@@ -23,12 +23,17 @@ if (!isset($_SESSION['admin_id'])) {
 
     <style>
         
-        /* REEMPLAZA ESTAS LÍNEAS EN TU HEADER.PHP */
+        
         body { 
             margin: 0; 
             overflow: hidden; 
-            background-color: var(--bs-body-bg); /* Adaptable al modo oscuro */
+            background-color: var(--bs-body-bg); 
             color: var(--bs-body-color);
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            transition: background 0.3s ease;
         }
         
         .navbar-top { 

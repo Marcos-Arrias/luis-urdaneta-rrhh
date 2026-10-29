@@ -76,10 +76,32 @@ include '../Includes/sidebar.php';
 
 <div class="tab-content" id="ajustesTabContent">
     
-   <!-- PESTAÑA 1: APARIENCIA (CON SLIDERS) -->
+<!-- PESTAÑA 1: APARIENCIA (SUPER PERSONALIZABLE) -->
     <div class="tab-pane fade show active" id="apariencia">
+        
+        <!-- FONDO DE PANTALLA -->
+        <div class="card shadow-sm border-0 mb-4 border-start border-4 border-info bg-body-tertiary">
+            <div class="card-body p-4">
+                <h5 class="fw-bold mb-1"><i class="bi bi-image me-2 text-info"></i>Fondo de Pantalla (Wallpaper)</h5>
+                <p class="small text-muted mb-3">Sube una imagen de tu computadora o pega un enlace para cambiar el fondo de todo el sistema.</p>
+                <div class="row g-2 align-items-center">
+                    <div class="col-md-5">
+                        <label class="small fw-bold text-muted mb-1"><i class="bi bi-upload me-1"></i>Subir desde el PC:</label>
+                        <input type="file" id="bgImageInput" class="form-control" accept="image/*">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="small fw-bold text-muted mb-1"><i class="bi bi-link-45deg me-1"></i>O pegar Enlace (URL):</label>
+                        <input type="url" id="bgUrlInput" class="form-control" placeholder="https://ejemplo.com/fondo.jpg">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button id="resetBgBtn" class="btn btn-outline-danger w-100 fw-bold"><i class="bi bi-trash"></i> Quitar Fondo</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="row">
-            
+            <!-- MODO OSCURO -->
             <div class="col-md-4 mb-3">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-dark">
                     <div class="card-body text-center py-4">
@@ -93,21 +115,45 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- COLOR DEL MENÚ (CON SELECTOR LIBRE) -->
             <div class="col-md-4 mb-3">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-primary">
-                    <div class="card-body text-center py-4">
-                        <i class="bi bi-layout-sidebar-inset fs-1 mb-2 text-primary"></i>
-                        <h5 class="fw-bold">Color del Menú</h5>
-                        <select id="selectMenuColor" class="form-select mt-3 shadow-sm border-0 bg-body-tertiary fw-bold">
+                    <div class="card-body text-center py-3">
+                        <i class="bi bi-palette-fill fs-2 mb-1 text-primary"></i>
+                        <h5 class="fw-bold mb-2">Color del Menú</h5>
+                        <select id="selectMenuColor" class="form-select form-select-sm shadow-sm border-0 bg-body-tertiary fw-bold mb-2">
                             <option value="default">🔵 Azul Corporativo</option>
                             <option value="dark">⚫ Negro Carbón</option>
                             <option value="success">🟢 Verde Esmeralda</option>
                             <option value="danger">🔴 Rojo Carmesí</option>
+                            <option value="custom">🎨 Color Personalizado...</option>
+                        </select>
+                        <div class="d-flex align-items-center justify-content-center">
+                            <label class="small text-muted me-2 fw-bold">Selector Libre:</label>
+                            <input type="color" id="customColorPicker" class="form-control form-control-color p-1 shadow-sm" style="height: 35px; width: 60px; cursor: pointer;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TIPOGRAFÍA -->
+            <div class="col-md-4 mb-3">
+                <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-success">
+                    <div class="card-body text-center py-4">
+                        <i class="bi bi-type fs-1 mb-2 text-success"></i>
+                        <h5 class="fw-bold">Fuente del Sistema</h5>
+                        <select id="selectFontFamily" class="form-select mt-3 shadow-sm border-0 bg-body-tertiary fw-bold">
+                            <option value="default">Estándar (Segoe UI / Roboto)</option>
+                            <option value="Georgia, serif">Clásica (Georgia)</option>
+                            <option value="Tahoma, sans-serif">Compacta (Tahoma)</option>
+                            <option value="'Courier New', Courier, monospace">Terminal (Courier Mono)</option>
+                            <option value="'Comic Sans MS', cursive, sans-serif">Divertida (Comic Sans)</option>
                         </select>
                     </div>
                 </div>
             </div>
 
+            <!-- ESTILO DE TARJETAS -->
             <div class="col-md-4 mb-3">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-warning">
                     <div class="card-body text-center py-4">
@@ -124,13 +170,13 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
-            <!-- SLIDERS (RANGE INPUTS) -->
-            <div class="col-md-6 mb-3">
+            <!-- DENSIDAD DE TABLAS -->
+            <div class="col-md-4 mb-3">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-secondary">
                     <div class="card-body py-4">
                         <div class="d-flex align-items-center mb-3">
-                            <i class="bi bi-table fs-2 me-3 text-secondary"></i>
-                            <div><h5 class="fw-bold mb-0">Densidad de Tablas</h5><small class="text-muted">Ajusta el espacio entre filas.</small></div>
+                            <i class="bi bi-table fs-3 me-3 text-secondary"></i>
+                            <div><h6 class="fw-bold mb-0">Densidad de Tablas</h6><small class="text-muted">Espacio entre filas.</small></div>
                         </div>
                         <input type="range" class="form-range" id="rangeTableDensity" min="1" max="3" step="1">
                         <div class="d-flex justify-content-between small fw-bold text-muted mt-1">
@@ -140,12 +186,13 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
-            <div class="col-md-6 mb-3">
-                <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-info">
+            <!-- TAMAÑO DE FUENTE -->
+            <div class="col-md-4 mb-3">
+                <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-danger">
                     <div class="card-body py-4">
                         <div class="d-flex align-items-center mb-3">
-                            <i class="bi bi-fonts fs-2 me-3 text-info"></i>
-                            <div><h5 class="fw-bold mb-0">Tamaño de Fuente</h5><small class="text-muted">Ajusta la lectura global.</small></div>
+                            <i class="bi bi-fonts fs-3 me-3 text-danger"></i>
+                            <div><h6 class="fw-bold mb-0">Tamaño de Fuente</h6><small class="text-muted">Ajusta la lectura global.</small></div>
                         </div>
                         <input type="range" class="form-range" id="rangeFontSize" min="1" max="3" step="1">
                         <div class="d-flex justify-content-between small fw-bold text-muted mt-1">
@@ -157,6 +204,7 @@ include '../Includes/sidebar.php';
 
         </div>
     </div>
+    
     <!-- PESTAÑA 2: CARGOS -->
     <div class="tab-pane fade" id="cargos">
         <div class="card shadow-sm border-0 mb-4 bg-body-tertiary">
