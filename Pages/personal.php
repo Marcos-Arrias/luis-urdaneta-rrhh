@@ -26,7 +26,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $nuevo_cargo = $_POST['nuevo_cargo_id'];
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
             
-            // Se actualiza el cargo vigente de todos los seleccionados
             $params = array_merge([$nuevo_cargo], $ids);
             $pdo->prepare("UPDATE personal_cargos SET cargo_area_id = ? WHERE personal_id IN ($placeholders) AND estado_cargo='Vigente'")->execute($params);
             registrarHistorial($pdo, 'Personal', 'ACTUALIZAR', "Cambio de cargo masivo a " . count($ids) . " trabajadores.");
@@ -83,21 +82,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $stmtExtra->execute([$personal_id, $_POST['estado_civil']??'Soltero/a', intval($_POST['cantidad_hijos']??0), $_POST['etnia']??null, !empty($_POST['fecha_ingreso_mppe'])?$_POST['fecha_ingreso_mppe']:null, $_POST['dependencia']??null, $_POST['codigo_dependencia']??null, $_POST['turno']??'Mañana', $_POST['nivel_academico']??null, $_POST['correo_electronico']??null, $_POST['banco_nomina']??null, $_POST['cuenta_bancaria']??null, $_POST['cargo_nominal']??null, $_POST['codigo_cargo']??null, intval($_POST['horas_laborales']??0), $_POST['direccion_habitacion']??null, $_POST['municipio']??null, $_POST['parroquia']??null, $_POST['centro_votacion']??null, $_POST['patologias']??null, $_POST['medicamentos_permanentes']??null, $_POST['tipo_sangre']??null, $_POST['alergias_medicas']??null, $_POST['condiciones_especiales']??null, $_POST['talla_camisa']??null, $_POST['talla_pantalon']??null, $_POST['talla_calzado']??null]);
 
-            // Archivo Digitalizado
-            if (isset($_FILES['archivo_expediente']) && $_FILES['archivo_expediente']['error'] === UPLOAD_ERR_OK) {
-                $tipo_clave = $_POST['tipo_archivo_clave'] ?? 'OTR';
+            // ========================================================
+            // NUEVO: CARGA MÚLTIPLE DE DOCUMENTOS DIGITALIZADOS
+            // ========================================================
+            if (isset($_FILES['archivo_expediente']) && is_array($_FILES['archivo_expediente']['name'])) {
                 $directorio = '../documentos/';
                 if (!file_exists($directorio)) mkdir($directorio, 0777, true);
-                $ext = strtolower(pathinfo($_FILES['archivo_expediente']['name'], PATHINFO_EXTENSION));
-                $stmtS = $pdo->prepare("SELECT MAX(numero_secuencia) FROM personal_archivos_digitales WHERE personal_id = ? AND tipo_documento_clave = ?");
-                $stmtS->execute([$personal_id, $tipo_clave]);
-                $secuencia = intval($stmtS->fetchColumn()) + 1;
                 $cedula_limpia = preg_replace('/[^0-9]/', '', $cedula);
-                $nombre_codigo = sprintf("V%s_%d_%s_%02d.%s", $cedula_limpia, $personal_id, $tipo_clave, $secuencia, $ext);
-                $rutaFinal = $directorio . $nombre_codigo;
 
-                if (move_uploaded_file($_FILES['archivo_expediente']['tmp_name'], $rutaFinal)) {
-                    $pdo->prepare("INSERT INTO personal_archivos_digitales (personal_id, codigo_archivo, tipo_documento_clave, numero_secuencia, nombre_original, ruta_archivo, mime_type) VALUES (?, ?, ?, ?, ?, ?, ?)")->execute([$personal_id, $nombre_codigo, $tipo_clave, $secuencia, $_FILES['archivo_expediente']['name'], $rutaFinal, $_FILES['archivo_expediente']['type']]);
+                foreach ($_FILES['archivo_expediente']['name'] as $idx => $nombreOriginal) {
+                    if ($_FILES['archivo_expediente']['error'][$idx] === UPLOAD_ERR_OK) {
+                        $tipo_clave = $_POST['tipo_archivo_clave'][$idx] ?? 'OTR';
+                        $tmpName = $_FILES['archivo_expediente']['tmp_name'][$idx];
+                        $mime = $_FILES['archivo_expediente']['type'][$idx];
+                        $ext = strtolower(pathinfo($nombreOriginal, PATHINFO_EXTENSION));
+
+                        // Calcular correlativo según el tipo de documento para esta persona
+                        $stmtS = $pdo->prepare("SELECT MAX(numero_secuencia) FROM personal_archivos_digitales WHERE personal_id = ? AND tipo_documento_clave = ?");
+                        $stmtS->execute([$personal_id, $tipo_clave]);
+                        $secuencia = intval($stmtS->fetchColumn()) + 1;
+
+                        $nombre_codigo = sprintf("V%s_%d_%s_%02d.%s", $cedula_limpia, $personal_id, $tipo_clave, $secuencia, $ext);
+                        $rutaFinal = $directorio . $nombre_codigo;
+
+                        if (move_uploaded_file($tmpName, $rutaFinal)) {
+                            $pdo->prepare("INSERT INTO personal_archivos_digitales (personal_id, codigo_archivo, tipo_documento_clave, numero_secuencia, nombre_original, ruta_archivo, mime_type) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                                ->execute([$personal_id, $nombre_codigo, $tipo_clave, $secuencia, $nombreOriginal, $rutaFinal, $mime]);
+                            registrarHistorial($pdo, 'Documentos', 'CREAR', "Adjuntó $nombre_codigo al expediente.");
+                        }
+                    }
                 }
             }
         } 
@@ -141,7 +154,7 @@ $sql = "
            (SELECT GROUP_CONCAT(CONCAT(tipo_documento_clave, '::', codigo_archivo, '::', ruta_archivo) SEPARATOR '||') 
             FROM personal_archivos_digitales WHERE personal_id = p.id) as galeria_archivos,
            pda.*,
-           p.id -- ¡LA SOLUCIÓN! Forzamos a que el ID real del personal sea el último en leerse
+           p.id
     FROM personal p 
     INNER JOIN personal_cargos pc ON p.id = pc.personal_id AND pc.estado_cargo = 'Vigente'
     INNER JOIN cat_cargos_areas c ON pc.cargo_area_id = c.id 
@@ -208,7 +221,6 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
 
 <div class="card shadow-sm border-0 rounded-4">
     <div class="table-responsive" style="overflow: visible;">
-        <!-- TABLA CON COLUMNAS ARRASTRABLES (DRAGGABLE) Y ORDENABLES (SORTABLE) -->
         <table class="table table-hover mb-0 align-middle" id="tablaPersonal">
             <thead class="table-light text-secondary">
                 <tr>
@@ -249,7 +261,6 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
                                     <img src="<?= $d['ruta_foto_carnet'] ?>" class="avatar-thumb me-3 shadow-sm">
                                 <?php else: ?>
                                     <?php 
-                                    // COLOR DINÁMICO DEL AVATAR SEGÚN EL TIPO DE PERSONAL
                                     $avBg = 'bg-primary text-white';
                                     if ($tipo_id == 2) $avBg = 'bg-success text-white';
                                     if ($tipo_id == 3) $avBg = 'bg-warning text-dark';
@@ -279,7 +290,6 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
                         <td class="text-center text-muted small"><?= date('d/m/y', strtotime($d['fecha_ingreso'])) ?></td>
                         <td class="text-center">
                             <?php 
-                            // REPARACIÓN DE COLORES PARA QUE SEAN LEGIBLES
                             $est = $d['estado_laboral'];
                             $bClass = 'bg-success text-white'; 
                             if($est == 'Reposo') $bClass = 'bg-warning text-dark fw-bold'; 
@@ -350,7 +360,6 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
     </div>
 </div>
 
-<!-- EL RESTO DE TUS MODALES (REGISTRO, OFFCANVAS) PERMANECE IDÉNTICO AQUÍ -->
 <!-- ========================================== -->
 <!-- OFFCANVAS (EXPEDIENTE MPPE + ARCHIVOS) -->
 <!-- ========================================== -->
@@ -401,9 +410,9 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
   </div>
 </div>
 
-<!-- ========================================== -->
-<!-- MODAL DE REGISTRO CON SUBIDA DE ARCHIVO -->
-<!-- ========================================== -->
+<!-- ======================================================== -->
+<!-- MODAL DE REGISTRO CON CARGA MÚLTIPLE DE DOCUMENTOS -->
+<!-- ======================================================== -->
 <div class="modal fade" id="modalRegistro" tabindex="-1">
     <div class="modal-dialog modal-xl">
         <div class="modal-content border-0">
@@ -449,24 +458,40 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
                         </div>
                     </div>
 
+                    <!-- SECCIÓN: ADJUNTAR MÚLTIPLES ARCHIVOS DIGITALES -->
                     <div class="card border-0 shadow-sm mb-3 border-start border-4 border-warning">
                         <div class="card-body">
-                            <h6 class="text-warning fw-bold mb-2"><i class="bi bi-camera-fill me-1"></i> Adjuntar Archivo Digitalizado (Codificación Automática)</h6>
-                            <div class="row g-2 align-items-center">
-                                <div class="col-md-4">
-                                    <label class="small text-muted">Tipo de Archivo:</label>
-                                    <select name="tipo_archivo_clave" class="form-select form-select-sm">
-                                        <option value="FOT">FOT - Foto Tipo Carnet</option>
-                                        <option value="CED">CED - Cédula Escaneada</option>
-                                        <option value="TIT">TIT - Título / Fondo Negro</option>
-                                        <option value="MED">MED - Certificado Médico</option>
-                                        <option value="SOP">SOP - Constancia / Reposo</option>
-                                        <option value="OTR">OTR - Otro Documento</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-8">
-                                    <label class="small text-muted">Seleccionar Imagen o Documento:</label>
-                                    <input type="file" name="archivo_expediente" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="text-warning fw-bold mb-0"><i class="bi bi-folder-plus me-1"></i> Documentos Digitalizados (Carga Múltiple)</h6>
+                                <button type="button" class="btn btn-outline-warning btn-sm fw-bold" onclick="agregarFilaArchivo()">
+                                    <i class="bi bi-plus-lg me-1"></i> Agregar otro archivo
+                                </button>
+                            </div>
+                            <p class="small text-muted mb-3">Puedes cargar varios documentos simultáneamente (Cédula, Títulos, Fotos carnet, Reposos) asignándoles su categoría.</p>
+
+                            <!-- Contenedor dinámico de filas de archivo -->
+                            <div id="contenedorArchivos">
+                                <div class="row g-2 align-items-center mb-2 fila-archivo">
+                                    <div class="col-md-4">
+                                        <label class="small text-muted">Tipo de Documento:</label>
+                                        <select name="tipo_archivo_clave[]" class="form-select form-select-sm">
+                                            <option value="FOT">FOT - Foto Tipo Carnet</option>
+                                            <option value="CED">CED - Cédula Escaneada</option>
+                                            <option value="TIT">TIT - Título / Fondo Negro</option>
+                                            <option value="MED">MED - Certificado Médico</option>
+                                            <option value="SOP">SOP - Constancia / Reposo</option>
+                                            <option value="OTR">OTR - Otro Documento</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-7">
+                                        <label class="small text-muted">Seleccionar Imagen o Documento:</label>
+                                        <input type="file" name="archivo_expediente[]" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp">
+                                    </div>
+                                    <div class="col-md-1 text-center pt-3">
+                                        <button type="button" class="btn btn-sm text-danger border-0" onclick="eliminarFilaArchivo(this)" title="Quitar archivo">
+                                            <i class="bi bi-x-circle-fill fs-5"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -541,14 +566,84 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-primary w-100 fw-bold">Guardar Expediente y Archivo</button></div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary w-100 fw-bold">Guardar Expediente y Archivos</button></div>
             </form>
         </div>
     </div>
 </div>
 
 <!-- ======================================================== -->
-<!-- SCRIPT 1: LOGICA DE SELECCION MULTIPLE Y ACCIONES MASIVAS-->
+<!-- SCRIPT: GESTIÓN DE ARCHIVOS DINÁMICOS -->
+<!-- ======================================================== -->
+<script>
+function agregarFilaArchivo() {
+    let contenedor = document.getElementById('contenedorArchivos');
+    let nuevaFila = document.createElement('div');
+    nuevaFila.className = 'row g-2 align-items-center mb-2 fila-archivo';
+    nuevaFila.innerHTML = `
+        <div class="col-md-4">
+            <select name="tipo_archivo_clave[]" class="form-select form-select-sm">
+                <option value="FOT">FOT - Foto Tipo Carnet</option>
+                <option value="CED">CED - Cédula Escaneada</option>
+                <option value="TIT">TIT - Título / Fondo Negro</option>
+                <option value="MED">MED - Certificado Médico</option>
+                <option value="SOP">SOP - Constancia / Reposo</option>
+                <option value="OTR">OTR - Otro Documento</option>
+            </select>
+        </div>
+        <div class="col-md-7">
+            <input type="file" name="archivo_expediente[]" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp">
+        </div>
+        <div class="col-md-1 text-center">
+            <button type="button" class="btn btn-sm text-danger border-0" onclick="eliminarFilaArchivo(this)" title="Quitar archivo">
+                <i class="bi bi-x-circle-fill fs-5"></i>
+            </button>
+        </div>
+    `;
+    contenedor.appendChild(nuevaFila);
+}
+
+function eliminarFilaArchivo(btn) {
+    let filas = document.querySelectorAll('.fila-archivo');
+    if (filas.length > 1) {
+        btn.closest('.fila-archivo').remove();
+    } else {
+        // Si es la única fila, solo limpiamos el archivo seleccionado
+        btn.closest('.fila-archivo').querySelector('input[type="file"]').value = '';
+    }
+}
+
+function resetearFilasArchivos() {
+    let contenedor = document.getElementById('contenedorArchivos');
+    contenedor.innerHTML = `
+        <div class="row g-2 align-items-center mb-2 fila-archivo">
+            <div class="col-md-4">
+                <label class="small text-muted">Tipo de Documento:</label>
+                <select name="tipo_archivo_clave[]" class="form-select form-select-sm">
+                    <option value="FOT">FOT - Foto Tipo Carnet</option>
+                    <option value="CED">CED - Cédula Escaneada</option>
+                    <option value="TIT">TIT - Título / Fondo Negro</option>
+                    <option value="MED">MED - Certificado Médico</option>
+                    <option value="SOP">SOP - Constancia / Reposo</option>
+                    <option value="OTR">OTR - Otro Documento</option>
+                </select>
+            </div>
+            <div class="col-md-7">
+                <label class="small text-muted">Seleccionar Imagen o Documento:</label>
+                <input type="file" name="archivo_expediente[]" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp">
+            </div>
+            <div class="col-md-1 text-center pt-3">
+                <button type="button" class="btn btn-sm text-danger border-0" onclick="eliminarFilaArchivo(this)" title="Quitar archivo">
+                    <i class="bi bi-x-circle-fill fs-5"></i>
+                </button>
+            </div>
+        </div>
+    `;
+}
+</script>
+
+<!-- ======================================================== -->
+<!-- SCRIPT: SELECCION MULTIPLE Y ACCIONES MASIVAS -->
 <!-- ======================================================== -->
 <script>
 let selectedIds = new Set();
@@ -619,10 +714,9 @@ function ejecutarBulkMove() {
 </script>
 
 <!-- ======================================================== -->
-<!-- SCRIPT 2: ORDENAMIENTO (ASC/DESC) Y ARRASTRE DE COLUMNAS -->
+<!-- SCRIPT: ORDENAMIENTO (ASC/DESC) Y ARRASTRE DE COLUMNAS -->
 <!-- ======================================================== -->
 <script>
-// ORDENAMIENTO DE FILAS
 const getCellValue = (tr, idx) => tr.children[idx].innerText || tr.children[idx].textContent;
 const comparer = (idx, asc) => (a, b) => ((v1, v2) => 
     v1 !== '' && v2 !== '' && !isNaN(v1) && !isNaN(v2) ? v1 - v2 : v1.toString().localeCompare(v2)
@@ -632,23 +726,19 @@ document.querySelectorAll('th.sortable').forEach(th => th.addEventListener('clic
     const table = th.closest('table');
     const tbody = table.querySelector('tbody');
     
-    // Limpiar clases de otras columnas
     Array.from(th.parentNode.children).forEach(sibling => {
         if(sibling !== th) { sibling.classList.remove('asc', 'desc'); }
     });
     
-    // Alternar clase
     let asc = th.classList.contains('asc');
     th.classList.toggle('asc', !asc);
     th.classList.toggle('desc', asc);
 
-    // Ordenar y Reacomodar
     Array.from(tbody.querySelectorAll('tr.fila-personal'))
         .sort(comparer(Array.from(th.parentNode.children).indexOf(th), !asc))
         .forEach(tr => tbody.appendChild(tr));
 })));
 
-// ARRASTRE Y SOLTAR (DRAG & DROP) DE COLUMNAS
 let dragColIndex = null;
 
 function dragStart(e) {
@@ -664,7 +754,7 @@ function drop(e) {
     if (!targetTh) return;
     
     let targetIndex = Array.from(targetTh.parentNode.children).indexOf(targetTh);
-    if (dragColIndex === targetIndex || dragColIndex === 0 || targetIndex === 0 || targetIndex === 7) return; // No mover el checkbox (0) ni acciones (7)
+    if (dragColIndex === targetIndex || dragColIndex === 0 || targetIndex === 0 || targetIndex === 7) return;
 
     let table = targetTh.closest('table');
     let rows = table.querySelectorAll('tr');
@@ -685,19 +775,31 @@ function drop(e) {
 }
 </script>
 
-<!-- AUTO EDICION (SCRIPT DE ORGANIGRAMA) -->
+<!-- ======================================================== -->
+<!-- SCRIPT: AUTO-EDICIÓN DESDE ORGANIGRAMA Y FORMULARIO -->
+<!-- ========================================== -->
 <script>
+// Limpiar formulario y reiniciar sección de archivos
+const originalLimpiar = window.limpiarFormulario;
+window.limpiarFormulario = function() {
+    if(typeof originalLimpiar === 'function') originalLimpiar();
+    resetearFilasArchivos();
+};
+
+const originalEditar = window.editarRegistro;
+window.editarRegistro = function(btn) {
+    if(typeof originalEditar === 'function') originalEditar(btn);
+    resetearFilasArchivos();
+};
+
 document.addEventListener("DOMContentLoaded", () => {
     const urlParams = new URLSearchParams(window.location.search);
     const autoEditId = urlParams.get('auto_edit');
     
     if (autoEditId) {
-        console.log("Intentando auto-editar trabajador con ID:", autoEditId);
-        
         let targetBtn = null;
         let botonesEdicion = document.querySelectorAll('button[onclick="editarRegistro(this)"]');
         
-        // Buscar el botón exacto del trabajador
         for (let btn of botonesEdicion) {
             try {
                 let data = JSON.parse(btn.getAttribute('data-empleado'));
@@ -705,29 +807,17 @@ document.addEventListener("DOMContentLoaded", () => {
                     targetBtn = btn;
                     break;
                 }
-            } catch (e) {
-                console.error("Error leyendo datos del botón", e);
-            }
+            } catch (e) {}
         }
 
         if (targetBtn) {
-            console.log("Trabajador encontrado. Llenando datos y abriendo modal...");
-            
-            // 1. Llenar los datos en el formulario
             editarRegistro(targetBtn);
-            
-            // 2. Usar el método más seguro de Bootstrap 5 para forzar la apertura
             setTimeout(() => {
                 let modalDOM = document.getElementById('modalRegistro');
                 let modalInstancia = bootstrap.Modal.getOrCreateInstance(modalDOM);
                 modalInstancia.show();
-            }, 300); // 300ms es el tiempo ideal para que el DOM se asiente
-            
-        } else {
-            console.warn("El trabajador con ID " + autoEditId + " no se encuentra en esta tabla.");
+            }, 300);
         }
-        
-        // Limpiamos la URL para no repetir el proceso al recargar
         window.history.replaceState(null, '', window.location.pathname + '?tipo=' + urlParams.get('tipo'));
     }
 });
