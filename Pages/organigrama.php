@@ -1,7 +1,7 @@
 <?php
 require_once '../PHP/connection.php';
 
-// 1. AUTO-CREAR TABLA RELACIONAL
+// 1. AUTO-CREAR TABLA RELACIONAL SI NO EXISTE
 $pdo->exec("CREATE TABLE IF NOT EXISTS organigrama_jerarquia (
     personal_id INT PRIMARY KEY,
     jefe_id INT NULL,
@@ -9,26 +9,53 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS organigrama_jerarquia (
     FOREIGN KEY (jefe_id) REFERENCES personal(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-// 2. PROCESAR GUARDADO AJAX DEL ÁRBOL COMPLETO
+// 2. PROCESAMIENTO AJAX DEL GUARDADO (REPARADO Y BLINDADO)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nodos'])) {
     ob_clean();
-    header('Content-Type: application/json');
+    header('Content-Type: application/json; charset=utf-8');
     try {
         $nodos = json_decode($_POST['nodos'], true);
+        if (!is_array($nodos)) {
+            throw new Exception("El formato de nodos recibido no es válido.");
+        }
+        
         $pdo->beginTransaction();
+        
+        // Vaciamos la tabla para escribir la estructura actual
         $pdo->exec("DELETE FROM organigrama_jerarquia"); 
         
-        if (is_array($nodos) && count($nodos) > 0) {
+        if (count($nodos) > 0) {
+            // Obtenemos los IDs reales de personal para evitar violaciones de clave foránea
+            $stmtCheck = $pdo->query("SELECT id FROM personal");
+            $personalExistente = array_flip($stmtCheck->fetchAll(PDO::FETCH_COLUMN, 0));
+
             $stmt = $pdo->prepare("INSERT INTO organigrama_jerarquia (personal_id, jefe_id) VALUES (?, ?)");
+            
+            $guardados = 0;
             foreach ($nodos as $n) {
-                $emp_id = intval($n['id']);
-                $jefe_id = !empty($n['pid']) ? intval($n['pid']) : null;
-                $stmt->execute([$emp_id, $jefe_id]);
+                $emp_id = intval($n['id'] ?? 0);
+                $jefe_id = (!empty($n['pid'])) ? intval($n['pid']) : null;
+                
+                // Solo insertar si el trabajador existe en la tabla personal
+                if (isset($personalExistente[$emp_id])) {
+                    // Si el supervisor asignado no existe, se establece como NULL (Director)
+                    if ($jefe_id !== null && !isset($personalExistente[$jefe_id])) {
+                        $jefe_id = null;
+                    }
+                    // Evitar que sea su propio jefe
+                    if ($emp_id === $jefe_id) {
+                        $jefe_id = null;
+                    }
+                    
+                    $stmt->execute([$emp_id, $jefe_id]);
+                    $guardados++;
+                }
             }
         }
+        
         $pdo->commit();
-        registrarHistorial($pdo, 'Organigrama', 'ACTUALIZAR', "Actualizó gráficamente la jerarquía institucional.");
-        echo json_encode(['success' => true]);
+        registrarHistorial($pdo, 'Organigrama', 'ACTUALIZAR', "Guardó exitosamente la jerarquía institucional ($guardados trabajadores).");
+        echo json_encode(['success' => true, 'total' => $guardados]);
     } catch (Exception $e) {
         $pdo->rollBack();
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
@@ -36,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nodos'])) {
     exit;
 }
 
-// 3. CARGAR ÁRBOL ACTUAL (Ahora con MUCHOS más datos y el ID de categoría)
+// 3. CARGAR ÁRBOL ACTUAL
 $queryArbol = $pdo->query("
     SELECT o.personal_id as id, o.jefe_id as pid, 
            p.cedula, p.nombres, p.apellidos, c.nombre as cargo, c.tipo_personal_id,
@@ -53,35 +80,29 @@ $queryArbol = $pdo->query("
 
 $data_tree = [];
 foreach ($queryArbol as $row) {
-    // 1. GENERADOR DE AVATAR INTELIGENTE CON COLOR SEGÚN CARGO
+    // Generador de avatar inteligente con iniciales
     $iniciales = mb_strtoupper(mb_substr($row['nombres'], 0, 1, 'UTF-8') . mb_substr($row['apellidos'], 0, 1, 'UTF-8'), 'UTF-8');
-    
-    $color = '0d6efd'; // Azul default (Docente)
+    $color = '0d6efd';
     $textoColor = 'ffffff';
-    if ($row['tipo_personal_id'] == 2) $color = '198754'; // Verde (Admin)
-    if ($row['tipo_personal_id'] == 3) { $color = 'ffc107'; $textoColor = '000000'; } // Amarillo (Obrero)
+    if ($row['tipo_personal_id'] == 2) $color = '198754';
+    if ($row['tipo_personal_id'] == 3) { $color = 'ffc107'; $textoColor = '000000'; }
     
-    // Crear un SVG en Base64 para que el gráfico lo lea nativamente
-    $svgAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23$color'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%23$textoColor' font-size='42' font-family='Arial' font-weight='bold'>$iniciales</text></svg>";
+    $svgAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23$color'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%23$textoColor' font-size='40' font-family='Arial' font-weight='bold'>$iniciales</text></svg>";
 
-    $img = $row['foto'] ? $row['foto'] : $svgAvatar;
+    $img = !empty($row['foto']) ? $row['foto'] : $svgAvatar;
     
     $data_tree[] = [
-        'id' => $row['id'],
-        'pid' => $row['pid'],
+        'id' => (int)$row['id'],
+        'pid' => $row['pid'] ? (int)$row['pid'] : null,
         'name' => htmlspecialchars($row['apellidos'] . ', ' . $row['nombres'], ENT_QUOTES, 'UTF-8'),
-        'title' => htmlspecialchars($row['cargo'], ENT_QUOTES, 'UTF-8'),
+        'title' => htmlspecialchars($row['cargo'] ?? 'Sin cargo', ENT_QUOTES, 'UTF-8'),
         'img' => $img,
-        
-        // Datos para redirección y detalles
         'tipo_personal' => $row['tipo_personal_id'],
         'cedula' => 'V-' . $row['cedula'],
         'telefono' => htmlspecialchars($row['telefono'] ?? 'S/R', ENT_QUOTES, 'UTF-8'),
         'correo' => htmlspecialchars($row['correo_electronico'] ?? 'S/R', ENT_QUOTES, 'UTF-8'),
         'ingreso' => date('d/m/Y', strtotime($row['fecha_ingreso'])),
         'estado' => $row['estado_laboral'],
-        
-        // Detalles extras nuevos
         'estado_civil' => htmlspecialchars($row['estado_civil'] ?? 'S/R', ENT_QUOTES, 'UTF-8'),
         'nivel_academico' => htmlspecialchars($row['nivel_academico'] ?? 'S/R', ENT_QUOTES, 'UTF-8'),
         'tipo_sangre' => htmlspecialchars($row['tipo_sangre'] ?? 'S/R', ENT_QUOTES, 'UTF-8'),
@@ -89,9 +110,9 @@ foreach ($queryArbol as $row) {
         'direccion' => htmlspecialchars($row['direccion_habitacion'] ?? 'S/R', ENT_QUOTES, 'UTF-8')
     ];
 }
-$jerarquia_actual = json_encode($data_tree);
+$jerarquia_actual = json_encode($data_tree, JSON_UNESCAPED_UNICODE);
 
-// 4. CARGAR PERSONAL ACTIVO PARA AÑADIR NUEVOS
+// 4. CARGAR PERSONAL ACTIVO PARA EL SELECTOR DEL MODAL "AÑADIR"
 $empleados = $pdo->query("
     SELECT p.id, p.nombres, p.apellidos, c.nombre as cargo, c.tipo_personal_id,
            p.cedula, p.fecha_ingreso, p.estado_laboral,
@@ -103,7 +124,7 @@ $empleados = $pdo->query("
     WHERE p.estado_laboral = 'Activo'
     ORDER BY p.apellidos ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
-$personal_json = json_encode($empleados);
+$personal_json = json_encode($empleados, JSON_UNESCAPED_UNICODE);
 
 include '../Includes/header.php'; 
 include '../Includes/sidebar.php';
@@ -116,20 +137,18 @@ include '../Includes/sidebar.php';
     #tree-container { width: 100%; height: 750px; background-color: var(--bs-body-tertiary); border-radius: 1rem; border: 1px solid var(--bs-border-color); position: relative; overflow: hidden;}
     #tree { width: 100%; height: 100%; }
     
-    /* ADAPTACIÓN PROFUNDA AL MODO OSCURO PARA ORGCHART */
+    /* Adaptación del gráfico y buscador al modo oscuro */
     [data-bs-theme="dark"] .boc-light rect { fill: #212529 !important; stroke: #495057 !important; }
-    [data-bs-theme="dark"] .boc-light text { fill: #ffffff !important; } /* Fuerza las letras a blanco */
+    [data-bs-theme="dark"] .boc-light text { fill: #ffffff !important; }
     [data-bs-theme="dark"] .node rect { fill: #212529 !important; }
     [data-bs-theme="dark"] .node text { fill: #ffffff !important; }
+    [data-bs-theme="dark"] .boc-search { background-color: #212529 !important; border-color: #495057 !important; color: white !important; }
+    [data-bs-theme="dark"] .boc-search input { color: white !important; }
     
-    /* Buscador en modo oscuro */
-    [data-bs-theme="dark"] .boc-search { background-color: #212529 !important; border-color: #495057 !important; }
-    [data-bs-theme="dark"] .boc-search input { color: #ffffff !important; background-color: #212529 !important; }
-    
-    /* Ocultar botones por defecto de la librería */
+    /* Ocultar botones y menús default */
     .boc-edit-form, .edit-form, div[data-balkan-orgchart-edit-form], .boc-edit-button, .boc-add-button, .node-menu { display: none !important; opacity: 0 !important; visibility: hidden !important; }
     
-    /* Cursor para indicar que las ventanas modales se pueden arrastrar */
+    /* Cursor para indicar que las ventanas se pueden arrastrar */
     .modal-header { cursor: move; }
 
     /* Inseleccionable */
@@ -141,8 +160,21 @@ include '../Includes/sidebar.php';
         <h2 class="fw-bold mb-0"><i class="bi bi-diagram-3 me-2 text-primary"></i> Organigrama Institucional</h2>
         <p class="text-muted small mb-0">Rueda del ratón para Zoom. Arrastre para mover. Clic en empleado para opciones.</p>
     </div>
-    <div class="d-flex gap-2">
-        <button class="btn btn-outline-danger rounded-pill fw-bold shadow-sm" onclick="vaciarArbol()" title="Vaciar panel"><i class="bi bi-trash"></i></button>
+    <div class="d-flex gap-2 align-items-center">
+        <button class="btn btn-outline-danger rounded-pill fw-bold shadow-sm" onclick="vaciarArbol()" title="Vaciar organigrama"><i class="bi bi-trash"></i></button>
+        
+        <!-- MENÚ DE EXPORTACIÓN MULTI-FORMATO -->
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary rounded-pill fw-bold shadow-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                <i class="bi bi-download me-1"></i> Exportar
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow border-0 mt-2">
+                <li><button class="dropdown-item py-2 fw-medium" onclick="exportarOrganigrama('png')"><i class="bi bi-file-earmark-image me-2 text-primary"></i>Imagen (PNG)</button></li>
+                <li><button class="dropdown-item py-2 fw-medium" onclick="exportarOrganigrama('pdf')"><i class="bi bi-file-earmark-pdf me-2 text-danger"></i>Documento (PDF)</button></li>
+                <li><button class="dropdown-item py-2 fw-medium" onclick="exportarOrganigrama('svg')"><i class="bi bi-file-earmark-code me-2 text-warning"></i>Vectorial (SVG)</button></li>
+            </ul>
+        </div>
+
         <button class="btn btn-success shadow-sm rounded-pill px-4 fw-bold" onclick="abrirModalAgregar()"><i class="bi bi-person-plus-fill me-1"></i> Añadir Personal</button>
         <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold" onclick="guardarOrganigrama()" id="btnGuardar"><i class="bi bi-save me-1"></i> Guardar Cambios</button>
     </div>
@@ -278,7 +310,7 @@ include '../Includes/sidebar.php';
                     <select id="selectEmpleado" class="form-select border-primary shadow-sm">
                         <option value="">Seleccione a la persona...</option>
                         <?php foreach ($empleados as $e): ?>
-                            <option value="<?= $e['id'] ?>"><?= htmlspecialchars($e['apellidos'] . ', ' . $e['nombres']) ?> - (<?= htmlspecialchars($e['cargo']) ?>)</option>
+                            <option value="<?= $e['id'] ?>"><?= htmlspecialchars($e['apellidos'] . ', ' . $e['nombres'], ENT_QUOTES, 'UTF-8') ?> - (<?= htmlspecialchars($e['cargo'], ENT_QUOTES, 'UTF-8') ?>)</option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -298,15 +330,11 @@ include '../Includes/sidebar.php';
     const dataTree = <?= $jerarquia_actual ?>;
     const todosEmpleados = <?= $personal_json ?>;
 
-    // TRADUCCIÓN DEL BUSCADOR
     OrgChart.SEARCH_PLACEHOLDER = "🔍 Buscar empleado (Nombre, Cargo o Cédula)...";
 
     let chart = new OrgChart(document.getElementById("tree"), {
         template: "luba",
-        
-        // ¡LA MAGIA PARA ARREGLAR LA LÍNEA RECTA! (Agrupa a los subornidados en cuadrícula)
         layout: OrgChart.mixed, 
-        
         enableSearch: true,
         searchFields: ["name", "title", "cedula"],
         enableDragDrop: true,
@@ -317,7 +345,7 @@ include '../Includes/sidebar.php';
         nodes: dataTree
     });
 
-    // ABORTAR PANEL DEFAULT Y ABRIR NUESTRO MODAL
+    // BLOQUEAR EL OFFCANVAS POR DEFECTO
     chart.editUI.on('show', function (sender, nodeId) {
         let nodeData = chart.get(nodeId);
         document.getElementById('opcionesNodeId').value = nodeId;
@@ -326,6 +354,22 @@ include '../Includes/sidebar.php';
         return false; 
     });
 
+    // EXPORTACIÓN MULTI-FORMATO (PNG, PDF, SVG)
+    function exportarOrganigrama(formato) {
+        if (!chart) return;
+        let configExport = {
+            filename: "Organigrama_Luis_Urdaneta_" + (new Date().toISOString().slice(0, 10)),
+            expandChildren: true
+        };
+
+        if (formato === 'png') {
+            chart.exportPNG(configExport);
+        } else if (formato === 'pdf') {
+            chart.exportPDF(configExport);
+        } else if (formato === 'svg') {
+            chart.exportSVG(configExport);
+        }
+    }
 
     // GESTIÓN DEL MENÚ
     function abrirDesdeMenu(accion) {
@@ -359,13 +403,17 @@ include '../Includes/sidebar.php';
                 let selectJefe = document.getElementById('selectNuevoJefe');
                 selectJefe.innerHTML = '<option value="">Ninguno (Máxima Autoridad)</option>';
                 
-                Object.values(chart.nodes).forEach(n => {
-                    if (n.id && n.name && n.id != id) {
-                        let option = new Option(n.name + ' (' + n.title + ')', n.id);
-                        if (node.pid == n.id) option.selected = true;
-                        selectJefe.add(option);
+                for (let j_id in chart.nodes) {
+                    let n = chart.nodes[j_id];
+                    if (n && n.id && n.id != id) {
+                        let nodeObj = chart.get(n.id);
+                        if (nodeObj) {
+                            let option = new Option(nodeObj.name + ' (' + nodeObj.title + ')', nodeObj.id);
+                            if (node.pid == nodeObj.id) option.selected = true;
+                            selectJefe.add(option);
+                        }
                     }
-                });
+                }
                 new bootstrap.Modal(document.getElementById('modalEditPosition')).show();
             } 
             else if (accion === 'redirigir_crud') {
@@ -383,9 +431,15 @@ include '../Includes/sidebar.php';
     function abrirModalAgregar() {
         let selectJefe = document.getElementById('selectJefeAgregar');
         selectJefe.innerHTML = '<option value="">Ninguno (Será Nodo Raíz / Director)</option>';
-        Object.values(chart.nodes).forEach(n => {
-            if (n.id && n.name) selectJefe.add(new Option(n.name + ' (' + n.title + ')', n.id));
-        });
+        for (let id in chart.nodes) {
+            let n = chart.nodes[id];
+            if (n && n.id) {
+                let nodeObj = chart.get(n.id);
+                if (nodeObj) {
+                    selectJefe.add(new Option(nodeObj.name + ' (' + nodeObj.title + ')', nodeObj.id));
+                }
+            }
+        }
         document.getElementById('selectEmpleado').value = ""; 
         new bootstrap.Modal(document.getElementById('modalAddNode')).show();
     }
@@ -400,14 +454,25 @@ include '../Includes/sidebar.php';
 
         let empData = todosEmpleados.find(e => e.id == empId);
         if(empData) {
+            let iniciales = (empData.nombres.charAt(0) + empData.apellidos.charAt(0)).toUpperCase();
+            let color = '0d6efd';
+            let textoColor = 'ffffff';
+            if (empData.tipo_personal_id == 2) color = '198754';
+            if (empData.tipo_personal_id == 3) { color = 'ffc107'; textoColor = '000000'; }
+            let svgAvatar = `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23${color}'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%23${textoColor}' font-size='40' font-family='Arial' font-weight='bold'>${iniciales}</text></svg>`;
+
             chart.addNode({
-                id: empData.id, pid: pid,
+                id: parseInt(empData.id),
+                pid: pid ? parseInt(pid) : null,
                 name: empData.apellidos + ', ' + empData.nombres,
                 title: empData.cargo,
-                img: empData.foto ? empData.foto : 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
+                img: empData.foto ? empData.foto : svgAvatar,
                 tipo_personal: empData.tipo_personal_id,
-                cedula: 'V-'+empData.cedula, telefono: empData.telefono || 'S/R',
-                correo: empData.correo_electronico || 'S/R', ingreso: empData.fecha_ingreso, estado: empData.estado_laboral
+                cedula: 'V-' + empData.cedula,
+                telefono: empData.telefono || 'S/R',
+                correo: empData.correo_electronico || 'S/R',
+                ingreso: empData.fecha_ingreso,
+                estado: empData.estado_laboral
             });
             bootstrap.Modal.getInstance(document.getElementById('modalAddNode')).hide();
         }
@@ -417,44 +482,74 @@ include '../Includes/sidebar.php';
         let id = document.getElementById('editNodeId').value;
         let pid = document.getElementById('selectNuevoJefe').value;
         if (pid === "") pid = null;
+        
         let nodeData = chart.get(id);
-        nodeData.pid = pid;
+        nodeData.pid = pid ? parseInt(pid) : null;
         chart.updateNode(nodeData);
+        
         bootstrap.Modal.getInstance(document.getElementById('modalEditPosition')).hide();
     }
 
     function vaciarArbol() {
-        if(confirm('¿Seguro que desea limpiar todo el esquema visual? (Recuerde Guardar Cambios)')) chart.load([]); 
+        if(confirm('¿Seguro que desea limpiar todo el esquema visual? (Recuerde hacer clic en Guardar Cambios para sincronizar).')) {
+            chart.load([]); 
+        }
     }
 
+    // ========================================================
+    // GUARDADO REAL Y COMPLETO EN LA TABLA organigrama_jerarquia
+    // ========================================================
     async function guardarOrganigrama() {
         let btn = document.getElementById('btnGuardar');
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Procesando...';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Guardando...';
         btn.disabled = true;
 
         try {
             let nodosExtraidos = [];
-            Object.values(chart.nodes).forEach(n => {
-                if(n.id && n.name) {
-                    nodosExtraidos.push({ id: n.id, pid: (n.pid === undefined || n.pid === null || n.pid === "") ? null : n.pid });
+            
+            // Recorremos todos los nodos activos en el gráfico
+            for (let id in chart.nodes) {
+                let n = chart.nodes[id];
+                if (n && n.id !== undefined && n.id !== null) {
+                    let empId = parseInt(n.id);
+                    let jefeId = (n.pid !== undefined && n.pid !== null && n.pid !== "" && n.pid !== 0) ? parseInt(n.pid) : null;
+                    
+                    if (!isNaN(empId)) {
+                        nodosExtraidos.push({
+                            id: empId,
+                            pid: (!isNaN(jefeId) && jefeId !== empId) ? jefeId : null
+                        });
+                    }
                 }
-            });
+            }
+
             let formData = new FormData();
             formData.append('nodos', JSON.stringify(nodosExtraidos));
+
             let response = await fetch('organigrama.php', { method: 'POST', body: formData });
             let result = await response.json();
-            if(result.success) {
+
+            if (result.success) {
                 btn.classList.replace('btn-primary', 'btn-success');
-                btn.innerHTML = '<i class="bi bi-check-circle me-1"></i> Guardado Exitoso';
+                btn.innerHTML = `<i class="bi bi-check-circle me-1"></i> Guardado (${result.total})`;
+            } else {
+                alert("Error al guardar: " + result.error);
+                btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Cambios';
             }
-        } catch (error) {} finally {
-            setTimeout(() => { btn.classList.replace('btn-success', 'btn-primary'); btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Cambios'; btn.disabled = false; }, 2000);
+        } catch (error) {
+            console.error(error);
+            alert("Error de conexión al guardar los datos.");
+            btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Cambios';
+        } finally {
+            setTimeout(() => {
+                btn.classList.replace('btn-success', 'btn-primary');
+                btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Cambios';
+                btn.disabled = false;
+            }, 2500);
         }
     }
 
-    // ==========================================
     // SCRIPT PARA HACER LOS MODALES ARRASTRABLES
-    // ==========================================
     document.querySelectorAll('.modal-header').forEach(header => {
         let isDragging = false;
         let startX, startY, currentX, currentY;
@@ -465,7 +560,7 @@ include '../Includes/sidebar.php';
             isDragging = true;
             startX = e.clientX - xOffset;
             startY = e.clientY - yOffset;
-            modalContent.style.transition = 'none'; // Quitar animacion al arrastrar
+            modalContent.style.transition = 'none';
         });
 
         document.addEventListener('mousemove', (e) => {
@@ -479,7 +574,6 @@ include '../Includes/sidebar.php';
 
         document.addEventListener('mouseup', () => { isDragging = false; });
         
-        // Reiniciar posición al cerrar el modal
         let modalElement = header.closest('.modal');
         if(modalElement) {
             modalElement.addEventListener('hidden.bs.modal', () => {
