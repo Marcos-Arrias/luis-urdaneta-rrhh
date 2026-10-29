@@ -2,8 +2,8 @@
         </div> <!-- Cierra el page-content-wrapper -->
     </div> <!-- Cierra el wrapper principal -->
 
-    <!-- Carga de JS de Bootstrap -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Carga de JS de Bootstrap Local -->
+    <script src="../CSS/bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js"></script>
     <script src="../JS/script.js?v=<?= time() ?>"></script>
 
     <!-- ======================================================== -->

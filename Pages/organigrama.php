@@ -130,8 +130,8 @@ include '../Includes/header.php';
 include '../Includes/sidebar.php';
 ?>
 
-<!-- Librería Oficial OrgChart.js -->
-<script src="https://balkan.app/js/OrgChart.js"></script>
+<!-- Librería Oficial OrgChart.js Local -->
+<script src="../JS/OrgChart.js"></script>
 
 <style>
     #tree-container { width: 100%; height: 750px; background-color: var(--bs-body-tertiary); border-radius: 1rem; border: 1px solid var(--bs-border-color); position: relative; overflow: hidden;}

@@ -75,7 +75,7 @@ elseif ($formato === 'jpg') { ?>
     <head>
         <meta charset="UTF-8">
         <title>Generando Imagen...</title>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+        <script src="../JS/html2canvas.min.js"></script>
         <style>
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eef2f3; padding: 20px; display: flex; flex-direction: column; align-items: center; }
             #captura { width: 900px; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }

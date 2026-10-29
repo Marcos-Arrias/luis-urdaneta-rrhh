@@ -12,10 +12,9 @@ if(isset($_SESSION['admin_id'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Portal RRHH</title>
     
-    <!-- Bootstrap 5 CSS CDN -->
+<!-- Bootstrap 5 CSS CDN -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-
     <style>
         body { background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); min-height: 100vh; font-family: 'Segoe UI', sans-serif; }
         .login-card { border: none; border-radius: 1.5rem; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5); background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
