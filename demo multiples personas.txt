@@ -1,0 +1,440 @@
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+SET FOREIGN_KEY_CHECKS = 0;
+START TRANSACTION;
+SET time_zone = "+00:00";
+
+CREATE TABLE IF NOT EXISTS `cat_tipos_personal` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `nombre` varchar(50) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `nombre` (`nombre`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO `cat_tipos_personal` (`id`, `nombre`) VALUES
+(2, 'Administrativo'),
+(1, 'Docente'),
+(3, 'Obrero');
+
+CREATE TABLE IF NOT EXISTS `cat_cargos_areas` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `tipo_personal_id` int(11) NOT NULL,
+  `nombre` varchar(100) NOT NULL,
+  `descripcion` varchar(255) DEFAULT 'Cátedra / Función institucional.',
+  PRIMARY KEY (`id`),
+  KEY `tipo_personal_id` (`tipo_personal_id`),
+  CONSTRAINT `cat_cargos_areas_ibfk_1` FOREIGN KEY (`tipo_personal_id`) REFERENCES `cat_tipos_personal` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO `cat_cargos_areas` (`id`, `tipo_personal_id`, `nombre`, `descripcion`) VALUES
+(1, 1, 'Biología', 'Cátedra de Ciencias Naturales'),
+(2, 1, 'Matemáticas', 'Cátedra de Ciencias Exactas'),
+(3, 2, 'Director/a', 'Dirección e Inspección del Plantel'),
+(4, 2, 'Secretaria', 'Atención y Control de Expedientes'),
+(5, 3, 'Mantenimiento General', 'Mantenimiento de Planta Física'),
+(101, 2, 'Sub-Director Académico', 'Dirección de planes de estudio y docentes.'),
+(102, 2, 'Sub-Director Administrativo', 'Gestión de presupuesto, RRHH e infraestructura.'),
+(103, 1, 'Coordinador de Ciencias', 'Jefatura de cátedras exactas y naturales.'),
+(104, 1, 'Coordinador de Humanidades', 'Jefatura de cátedras sociales y lingüísticas.'),
+(105, 2, 'Coordinador de Evaluación', 'Control de notas y rendimiento estudiantil.'),
+(106, 2, 'Coordinador de RRHH', 'Gestión de expedientes y asistencia.'),
+(107, 3, 'Coordinador de Mantenimiento', 'Supervisión de obreros y planta física.'),
+(108, 3, 'Jefe de Seguridad', 'Coordinación de vigilancia y acceso.'),
+(109, 1, 'Física', 'Docente de Ciencias Físicas.'),
+(110, 1, 'Química', 'Docente de Ciencias Químicas y Laboratorio.'),
+(111, 1, 'Castellano y Literatura', 'Docente de Idioma Materno.'),
+(112, 1, 'Inglés', 'Docente de Lenguas Extranjeras.'),
+(113, 1, 'Orientador/a', 'Acompañamiento psicológico y vocacional.'),
+(114, 2, 'Asistente Administrativo', 'Apoyo en transcripción y archivos.'),
+(115, 3, 'Aseador/a', 'Limpieza de aulas y pasillos.'),
+(116, 3, 'Jardinero/a', 'Mantenimiento de áreas verdes.'),
+(117, 3, 'Electricista', 'Mantenimiento preventivo y correctivo.'),
+(118, 3, 'Vigilante', 'Rondas de seguridad y portería.');
+
+CREATE TABLE IF NOT EXISTS `cat_roles_sistema` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `nombre` varchar(50) NOT NULL,
+  `nivel_acceso` int(11) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `nombre` (`nombre`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO `cat_roles_sistema` (`id`, `nombre`, `nivel_acceso`) VALUES
+(1, 'SuperAdministrador', 10);
+
+CREATE TABLE IF NOT EXISTS `personal` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `cedula` varchar(20) NOT NULL,
+  `nombres` varchar(80) NOT NULL,
+  `apellidos` varchar(80) NOT NULL,
+  `fecha_nacimiento` date DEFAULT NULL,
+  `fecha_ingreso` date NOT NULL,
+  `estado_laboral` enum('Activo','Permiso','Reposo','Inactivo','Jubilado') DEFAULT 'Activo',
+  `fecha_registro` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `cedula` (`cedula`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO `personal` (`id`, `cedula`, `nombres`, `apellidos`, `fecha_nacimiento`, `fecha_ingreso`, `estado_laboral`) VALUES
+(1001, '99001001', 'David', 'Montoya (Director Gen.)', '1975-04-12', '2010-09-15', 'Activo'),
+(1002, '99001002', 'Laura', 'Pérez (Sub-Dir Académica)', '1980-06-25', '2012-03-01', 'Activo'),
+(1003, '99001003', 'Carlos', 'Gómez (Sub-Dir Admin)', '1982-11-10', '2014-01-15', 'Activo'),
+(1004, '99001004', 'Miguel', 'Fernández (Coord. Ciencias)', '1985-02-14', '2015-09-16', 'Activo'),
+(1005, '99001005', 'Sofía', 'López (Coord. Humanidades)', '1988-05-20', '2016-01-10', 'Activo'),
+(1006, '99001006', 'José', 'Martínez (Coord. Evaluación)', '1985-07-08', '2015-09-16', 'Activo'),
+(1007, '99001007', 'Ana', 'Rodríguez (Coord. RRHH)', '1978-08-30', '2011-10-01', 'Activo'),
+(1008, '99001008', 'Luis', 'Machado (Coord. Mantenimiento)','1976-11-12', '2011-03-01', 'Activo'),
+(1009, '99001009', 'Humberto', 'Márquez (Jefe Seguridad)', '1988-09-02', '2016-01-10', 'Activo'),
+(1010, '99001010', 'Pedro', 'Sánchez', '1991-12-05', '2020-03-15', 'Activo'),
+(1011, '99001011', 'Elena', 'Ruiz', '1987-10-30', '2015-09-16', 'Activo'),
+(1012, '99001012', 'Javier', 'Díaz', '1990-08-14', '2018-10-01', 'Activo'),
+(1013, '99001013', 'Isabel', 'Vargas', '1986-03-25', '2014-09-16', 'Permiso'),
+(1014, '99001014', 'Andrés', 'Castro', '1994-07-11', '2022-01-10', 'Activo'),
+(1015, '99001015', 'Paula', 'Morales', '1992-11-03', '2019-09-16', 'Activo'),
+(1016, '99001016', 'Jorge', 'Herrera', '1988-02-28', '2016-10-01', 'Activo'),
+(1017, '99001017', 'Marta', 'Medina', '1989-06-15', '2017-09-16', 'Activo'),
+(1018, '99001018', 'Diego', 'Aguilar', '1991-09-20', '2020-01-10', 'Activo'),
+(1019, '99001019', 'Lucía', 'Rojas', '1995-12-08', '2023-09-16', 'Reposo'),
+(1020, '99001020', 'Manuel', 'Molina', '1984-04-05', '2012-09-16', 'Activo'),
+(1021, '99001021', 'Clara', 'Silva', '1987-08-19', '2015-10-01', 'Activo'),
+(1022, '99001022', 'Raúl', 'Ortiz', '1993-01-22', '2021-09-16', 'Activo'),
+(1023, '99001023', 'Rosa', 'Delgado', '1990-05-11', '2018-01-10', 'Activo'),
+(1024, '99001024', 'Héctor', 'Salazar', '1986-10-27', '2014-09-16', 'Activo'),
+(1025, '99001025', 'Teresa', 'Peña', '1992-03-14', '2019-10-01', 'Activo'),
+(1026, '99001026', 'Roberto', 'Mendoza', '1989-07-30', '2017-09-16', 'Activo'),
+(1027, '99001027', 'Beatriz', 'Iglesias', '1994-11-18', '2022-01-10', 'Activo'),
+(1028, '99001028', 'Fernando', 'Suárez', '1985-02-05', '2013-09-16', 'Activo'),
+(1029, '99001029', 'Gloria', 'Guerrero', '1991-06-22', '2020-10-01', 'Activo'),
+(1030, '99001030', 'Arturo', 'Paredes', '1988-09-08', '2016-09-16', 'Activo'),
+(1031, '99001031', 'Silvia', 'Reyes', '1995-12-25', '2023-01-10', 'Activo'),
+(1032, '99001032', 'Eduardo', 'Campos', '1984-04-12', '2012-10-01', 'Activo'),
+(1033, '99001033', 'Alicia', 'Vega', '1987-08-29', '2015-09-16', 'Activo'),
+(1034, '99001034', 'Ricardo', 'Navarro', '1993-01-15', '2021-01-10', 'Activo'),
+(1035, '99001035', 'Patricia', 'Escobar', '1990-05-02', '2018-09-16', 'Activo'),
+(1036, '99001036', 'Óscar', 'Márquez', '1986-10-18', '2014-10-01', 'Activo'),
+(1037, '99001037', 'Verónica', 'Soto', '1992-03-05', '2019-09-16', 'Activo'),
+(1038, '99001038', 'Gabriel', 'Bustos', '1989-07-22', '2017-01-10', 'Activo'),
+(1039, '99001039', 'Lorena', 'Valdés', '1994-11-08', '2022-09-16', 'Activo'),
+(1040, '99001040', 'Mario', 'Guzmán', '1985-02-25', '2013-10-01', 'Activo'),
+(1041, '99001041', 'Natalia', 'Carrillo', '1991-06-12', '2020-09-16', 'Activo'),
+(1042, '99001042', 'Hugo', 'Pinto', '1988-09-29', '2016-01-10', 'Activo'),
+(1043, '99001043', 'Adriana', 'Muñoz', '1995-01-16', '2023-09-16', 'Activo'),
+(1044, '99001044', 'Víctor', 'Arias', '1984-04-03', '2012-10-01', 'Activo'),
+(1045, '99001045', 'Mónica', 'Fuentes', '1987-08-20', '2015-09-16', 'Activo'),
+(1046, '99001046', 'Enrique', 'Cabrera', '1993-01-06', '2021-01-10', 'Activo'),
+(1047, '99001047', 'Daniela', 'Miranda', '1990-05-23', '2018-09-16', 'Activo'),
+(1048, '99001048', 'Guillermo', 'Rojas', '1986-10-09', '2014-10-01', 'Activo'),
+(1049, '99001049', 'Cecilia', 'Salinas', '1992-03-27', '2019-09-16', 'Activo'),
+(1050, '99001050', 'Tomás', 'Lara', '1989-07-14', '2017-01-10', 'Activo'),
+(1051, '99001051', 'Andrea', 'Pacheco', '1994-11-30', '2022-09-16', 'Activo'),
+(1052, '99001052', 'Samuel', 'Vera', '1985-02-16', '2013-10-01', 'Activo'),
+(1053, '99001053', 'Julieta', 'Cordero', '1991-06-03', '2020-09-16', 'Activo'),
+(1054, '99001054', 'Félix', 'Gálvez', '1988-09-20', '2016-01-10', 'Activo'),
+(1055, '99001055', 'Diana', 'Ayala', '1995-01-07', '2023-09-16', 'Activo'),
+(1056, '99001056', 'Simón', 'Mora', '1984-04-24', '2012-10-01', 'Activo'),
+(1057, '99001057', 'Luz', 'Araya', '1987-08-11', '2015-09-16', 'Activo'),
+(1058, '99001058', 'Marcos', 'Osorio', '1993-01-27', '2021-01-10', 'Activo'),
+(1059, '99001059', 'Valeria', 'Ríos', '1990-05-15', '2018-09-16', 'Activo'),
+(1060, '99001060', 'Esteban', 'Pino', '1986-10-31', '2014-10-01', 'Activo'),
+(1061, '99001061', 'Inés', 'Vallejo', '1992-03-18', '2019-09-16', 'Activo'),
+(1062, '99001062', 'Alfonso', 'Cisneros', '1989-07-05', '2017-01-10', 'Activo'),
+(1063, '99001063', 'Camila', 'Gómez', '1994-11-21', '2022-09-16', 'Activo'),
+(1064, '99001064', 'Ignacio', 'Lugo', '1985-02-07', '2013-10-01', 'Activo'),
+(1065, '99001065', 'Josefina', 'Brito', '1991-06-24', '2020-09-16', 'Activo'),
+(1066, '99001066', 'Gonzalo', 'García', '1988-09-11', '2016-01-10', 'Activo'),
+(1067, '99001067', 'Tatiana', 'Mejía', '1995-01-28', '2023-09-16', 'Activo'),
+(1068, '99001068', 'Julio', 'Sosa', '1984-04-15', '2012-10-01', 'Activo'),
+(1069, '99001069', 'Rebeca', 'Villalobos', '1987-08-02', '2015-09-16', 'Activo'),
+(1070, '99001070', 'Cristian', 'Arce', '1993-01-18', '2021-01-10', 'Activo'),
+(1071, '99001071', 'Mireya', 'Ponce', '1990-05-06', '2018-09-16', 'Activo'),
+(1072, '99001072', 'Rodrigo', 'Serna', '1986-10-22', '2014-10-01', 'Activo'),
+(1073, '99001073', 'Ángela', 'Castañeda', '1992-03-09', '2019-09-16', 'Activo'),
+(1074, '99001074', 'Nelson', 'León', '1989-07-26', '2017-01-10', 'Activo'),
+(1075, '99001075', 'Yurimar', 'Parra', '1991-06-16', '2020-09-16', 'Activo'),
+(1076, '99001076', 'Elvira', 'Rincón', '1995-01-19', '2023-09-16', 'Activo'),
+(1077, '99001077', 'Dario', 'Salas', '1984-04-06', '2012-10-01', 'Activo'),
+(1078, '99001078', 'Nelly', 'Palacios', '1987-08-23', '2015-09-16', 'Activo'),
+(1079, '99001079', 'Fabián', 'Franco', '1993-01-09', '2021-01-10', 'Activo'),
+(1080, '99001080', 'Gladys', 'Guerra', '1990-05-27', '2018-09-16', 'Activo'),
+(1081, '99001081', 'Joaquín', 'Beltrán', '1986-10-13', '2014-10-01', 'Activo'),
+(1082, '99001082', 'Bárbara', 'Vidal', '1992-03-31', '2019-09-16', 'Activo'),
+(1083, '99001083', 'Ramón', 'Quintero', '1989-07-17', '2017-01-10', 'Activo'),
+(1084, '99001084', 'Estela', 'Chávez', '1994-11-03', '2022-09-16', 'Activo'),
+(1085, '99001085', 'Armando', 'Barrios', '1985-02-19', '2013-10-01', 'Activo'),
+(1086, '99001086', 'Milagros', 'Nieto', '1991-06-07', '2020-09-16', 'Activo'),
+(1087, '99001087', 'Humberto', 'Suarez', '1982-12-12', '2015-09-16', 'Activo'),
+(1088, '99001088', 'Carmen', 'Paredes', '1979-04-18', '2010-09-16', 'Activo'),
+(1089, '99001089', 'Luisa', 'Mendez', '1986-09-09', '2018-09-16', 'Activo'),
+(1090, '99001090', 'Ernesto', 'Pino', '1993-02-14', '2022-09-16', 'Activo');
+
+CREATE TABLE IF NOT EXISTS `personal_cargos` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `personal_id` int(11) NOT NULL,
+  `cargo_area_id` int(11) NOT NULL,
+  `fecha_asignacion` date NOT NULL,
+  `estado_cargo` enum('Vigente','Finalizado') DEFAULT 'Vigente',
+  PRIMARY KEY (`id`),
+  KEY `personal_id` (`personal_id`),
+  KEY `cargo_area_id` (`cargo_area_id`),
+  CONSTRAINT `personal_cargos_ibfk_1` FOREIGN KEY (`personal_id`) REFERENCES `personal` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `personal_cargos_ibfk_2` FOREIGN KEY (`cargo_area_id`) REFERENCES `cat_cargos_areas` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) VALUES 
+(1001, 3, '2010-09-15', 'Vigente'), (1002, 101, '2012-03-01', 'Vigente'), (1003, 102, '2014-01-15', 'Vigente'),
+(1004, 103, '2015-09-16', 'Vigente'), (1005, 104, '2016-01-10', 'Vigente'), (1006, 105, '2015-09-16', 'Vigente'),
+(1007, 106, '2011-10-01', 'Vigente'), (1008, 107, '2011-03-01', 'Vigente'), (1009, 108, '2016-01-10', 'Vigente');
+
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 2, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1010 AND 1013;
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 109, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1014 AND 1017;
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 110, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1018 AND 1021;
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 1, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1022 AND 1025;
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 111, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1026 AND 1031;
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 112, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1032 AND 1037;
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 113, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1038 AND 1041;
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 4, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1042 AND 1045;
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 114, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1046 AND 1049;
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 115, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1050 AND 1055;
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 116, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1056 AND 1058;
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 117, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1059 AND 1061;
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 118, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1062 AND 1070;
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 2, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1071 AND 1080;
+INSERT IGNORE INTO `personal_cargos` (`personal_id`, `cargo_area_id`, `fecha_asignacion`, `estado_cargo`) SELECT id, 115, fecha_ingreso, 'Vigente' FROM personal WHERE id BETWEEN 1081 AND 1090;
+
+CREATE TABLE IF NOT EXISTS `personal_contactos` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `personal_id` int(11) NOT NULL,
+  `tipo_contacto` enum('Teléfono Personal','Teléfono Emergencia','Email','Dirección') NOT NULL,
+  `valor` varchar(150) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `personal_id` (`personal_id`),
+  CONSTRAINT `personal_contactos_ibfk_1` FOREIGN KEY (`personal_id`) REFERENCES `personal` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO `personal_contactos` (`personal_id`, `tipo_contacto`, `valor`)
+SELECT id, 'Teléfono Personal', CONCAT('+58 412-', FLOOR(RAND() * 9000000) + 1000000) FROM personal WHERE id BETWEEN 1001 AND 1090;
+
+CREATE TABLE IF NOT EXISTS `personal_datos_adicionales` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `personal_id` int(11) NOT NULL,
+  `estado_civil` enum('Soltero/a','Casado/a','Divorciado/a','Viudo/a','Concubinato') DEFAULT 'Soltero/a',
+  `cantidad_hijos` int(11) DEFAULT 0,
+  `nivel_academico` varchar(100) DEFAULT NULL,
+  `tipo_sangre` varchar(5) DEFAULT NULL,
+  `alergias_medicas` text DEFAULT NULL,
+  `condiciones_especiales` text DEFAULT NULL,
+  `talla_camisa` varchar(10) DEFAULT NULL,
+  `talla_pantalon` varchar(10) DEFAULT NULL,
+  `talla_calzado` varchar(10) DEFAULT NULL,
+  `banco_nomina` varchar(50) DEFAULT NULL,
+  `cuenta_bancaria` varchar(30) DEFAULT NULL,
+  `etnia` varchar(50) DEFAULT NULL,
+  `fecha_ingreso_mppe` date DEFAULT NULL,
+  `dependencia` varchar(100) DEFAULT NULL,
+  `codigo_dependencia` varchar(50) DEFAULT NULL,
+  `turno` enum('Mañana','Tarde','Completo','Integral','Nocturno') DEFAULT 'Mañana',
+  `cargo_nominal` varchar(100) DEFAULT NULL,
+  `codigo_cargo` varchar(50) DEFAULT NULL,
+  `horas_laborales` int(11) DEFAULT 0,
+  `correo_electronico` varchar(120) DEFAULT NULL,
+  `direccion_habitacion` text DEFAULT NULL,
+  `municipio` varchar(80) DEFAULT NULL,
+  `parroquia` varchar(80) DEFAULT NULL,
+  `centro_votacion` varchar(150) DEFAULT NULL,
+  `patologias` text DEFAULT NULL,
+  `medicamentos_permanentes` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `personal_id` (`personal_id`),
+  CONSTRAINT `personal_datos_adicionales_ibfk_1` FOREIGN KEY (`personal_id`) REFERENCES `personal` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO `personal_datos_adicionales` (`personal_id`, `correo_electronico`, `banco_nomina`, `turno`, `horas_laborales`, `nivel_academico`, `tipo_sangre`)
+SELECT id, CONCAT('emp', id, '@urdaneta.edu.ve'), 'Banco de Venezuela', 'Mañana', 40, 'Universitario', 'O+' FROM personal WHERE id BETWEEN 1001 AND 1050;
+
+INSERT IGNORE INTO `personal_datos_adicionales` (`personal_id`, `correo_electronico`, `banco_nomina`, `turno`, `horas_laborales`, `nivel_academico`, `tipo_sangre`)
+SELECT id, CONCAT('emp', id, '@urdaneta.edu.ve'), 'Banco Bicentenario', 'Completo', 48, 'Bachiller', 'A+' FROM personal WHERE id BETWEEN 1051 AND 1090;
+
+CREATE TABLE IF NOT EXISTS `personal_archivos_digitales` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `personal_id` int(11) NOT NULL,
+  `codigo_archivo` varchar(100) NOT NULL,
+  `tipo_documento_clave` char(3) NOT NULL,
+  `numero_secuencia` int(11) NOT NULL DEFAULT 1,
+  `nombre_original` varchar(150) NOT NULL,
+  `ruta_archivo` varchar(255) NOT NULL,
+  `mime_type` varchar(50) DEFAULT NULL,
+  `fecha_subida` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `codigo_archivo` (`codigo_archivo`),
+  KEY `personal_id` (`personal_id`),
+  CONSTRAINT `personal_archivos_digitales_ibfk_1` FOREIGN KEY (`personal_id`) REFERENCES `personal` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `organigrama_jerarquia` (
+  `personal_id` int(11) NOT NULL,
+  `jefe_id` int(11) DEFAULT NULL,
+  PRIMARY KEY (`personal_id`),
+  KEY `jefe_id` (`jefe_id`),
+  CONSTRAINT `organigrama_fk_personal` FOREIGN KEY (`personal_id`) REFERENCES `personal` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `organigrama_fk_jefe` FOREIGN KEY (`jefe_id`) REFERENCES `personal` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO `organigrama_jerarquia` (`personal_id`, `jefe_id`) VALUES (1001, NULL);
+INSERT IGNORE INTO `organigrama_jerarquia` (`personal_id`, `jefe_id`) VALUES (1002, 1001), (1003, 1001);
+INSERT IGNORE INTO `organigrama_jerarquia` (`personal_id`, `jefe_id`) VALUES 
+(1004, 1002), (1005, 1002), (1006, 1002), 
+(1007, 1003), (1008, 1003), (1009, 1003);
+
+INSERT IGNORE INTO `organigrama_jerarquia` (`personal_id`, `jefe_id`) SELECT id, 1004 FROM personal WHERE id BETWEEN 1010 AND 1025;
+INSERT IGNORE INTO `organigrama_jerarquia` (`personal_id`, `jefe_id`) SELECT id, 1005 FROM personal WHERE id BETWEEN 1026 AND 1037;
+INSERT IGNORE INTO `organigrama_jerarquia` (`personal_id`, `jefe_id`) SELECT id, 1006 FROM personal WHERE id BETWEEN 1038 AND 1041;
+INSERT IGNORE INTO `organigrama_jerarquia` (`personal_id`, `jefe_id`) SELECT id, 1007 FROM personal WHERE id BETWEEN 1042 AND 1049;
+INSERT IGNORE INTO `organigrama_jerarquia` (`personal_id`, `jefe_id`) SELECT id, 1008 FROM personal WHERE id BETWEEN 1050 AND 1061;
+INSERT IGNORE INTO `organigrama_jerarquia` (`personal_id`, `jefe_id`) SELECT id, 1009 FROM personal WHERE id BETWEEN 1062 AND 1070;
+INSERT IGNORE INTO `organigrama_jerarquia` (`personal_id`, `jefe_id`) SELECT id, 1004 FROM personal WHERE id BETWEEN 1071 AND 1080;
+INSERT IGNORE INTO `organigrama_jerarquia` (`personal_id`, `jefe_id`) SELECT id, 1008 FROM personal WHERE id BETWEEN 1081 AND 1090;
+
+CREATE TABLE IF NOT EXISTS `asistencias` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `personal_id` int(11) NOT NULL,
+  `fecha` date NOT NULL,
+  `hora_entrada` time DEFAULT NULL,
+  `hora_salida` time DEFAULT NULL,
+  `estado_asistencia` enum('Presente','Ausente','Retardo','Falta Justificada') NOT NULL,
+  `observaciones` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `asistencia_unica` (`personal_id`,`fecha`),
+  CONSTRAINT `asistencias_ibfk_1` FOREIGN KEY (`personal_id`) REFERENCES `personal` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO `asistencias` (`personal_id`, `fecha`, `hora_entrada`, `hora_salida`, `estado_asistencia`, `observaciones`) VALUES
+(1010, DATE_SUB(CURDATE(), INTERVAL 2 DAY), '07:05:00', '13:00:00', 'Presente', NULL),
+(1014, DATE_SUB(CURDATE(), INTERVAL 2 DAY), NULL, NULL, 'Falta Justificada', 'Asistencia a taller del Ministerio.'),
+(1050, DATE_SUB(CURDATE(), INTERVAL 2 DAY), '06:45:00', '13:10:00', 'Retardo', 'Retraso por falla en el Metro.'),
+(1026, DATE_SUB(CURDATE(), INTERVAL 1 DAY), '07:00:00', '12:30:00', 'Presente', NULL),
+(1042, DATE_SUB(CURDATE(), INTERVAL 1 DAY), NULL, NULL, 'Ausente', 'No reportó motivo de inasistencia.'),
+(1062, DATE_SUB(CURDATE(), INTERVAL 1 DAY), '06:15:00', '18:00:00', 'Retardo', 'Cambio de guardia retrasado 15 min.'),
+(1007, CURDATE(), '08:00:00', NULL, 'Presente', NULL),
+(1032, CURDATE(), NULL, NULL, 'Falta Justificada', 'Reposo médico de 48 horas (Gripe).'),
+(1051, CURDATE(), '13:00:00', NULL, 'Retardo', 'Lluvia fuerte en su zona de residencia.'),
+(1001, CURDATE(), '07:30:00', NULL, 'Presente', 'Llegada habitual de Dirección.');
+
+CREATE TABLE IF NOT EXISTS `horarios_laborales` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `personal_id` int(11) NOT NULL,
+  `dia_semana` enum('Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo') NOT NULL,
+  `hora_inicio` time NOT NULL,
+  `hora_fin` time NOT NULL,
+  `actividad` varchar(150) NOT NULL,
+  `color_fondo` varchar(50) DEFAULT 'bg-primary',
+  PRIMARY KEY (`id`),
+  KEY `personal_id` (`personal_id`),
+  CONSTRAINT `horarios_laborales_ibfk_1` FOREIGN KEY (`personal_id`) REFERENCES `personal` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO `horarios_laborales` (`personal_id`, `dia_semana`, `hora_inicio`, `hora_fin`, `actividad`, `color_fondo`) VALUES
+(1010, 'Lunes', '07:00:00', '09:15:00', 'Clases Matemáticas 1er Año', 'bg-primary'),
+(1010, 'Miércoles', '09:30:00', '11:45:00', 'Clases Matemáticas 2do Año', 'bg-primary'),
+(1014, 'Martes', '07:00:00', '10:00:00', 'Laboratorio de Física 4to Año', 'bg-info text-dark'),
+(1014, 'Jueves', '13:00:00', '15:15:00', 'Clases Física 5to Año', 'bg-info text-dark'),
+(1026, 'Lunes', '10:00:00', '12:15:00', 'Castellano 3er Año', 'bg-warning text-dark'),
+(1026, 'Viernes', '07:00:00', '09:15:00', 'Planificación y Evaluación', 'bg-secondary'),
+(1032, 'Miércoles', '13:00:00', '16:00:00', 'Inglés Conversacional 5to Año', 'bg-danger'),
+(1007, 'Lunes', '08:00:00', '15:00:00', 'Atención RRHH y Nómina', 'bg-success'),
+(1007, 'Martes', '08:00:00', '15:00:00', 'Atención RRHH y Nómina', 'bg-success'),
+(1007, 'Miércoles', '08:00:00', '15:00:00', 'Atención RRHH y Nómina', 'bg-success'),
+(1042, 'Jueves', '08:00:00', '15:00:00', 'Archivo y Transcripción', 'bg-success'),
+(1042, 'Viernes', '08:00:00', '15:00:00', 'Archivo y Transcripción', 'bg-success'),
+(1050, 'Lunes', '06:00:00', '13:00:00', 'Limpieza Matutina (Pabellón A)', 'bg-secondary'),
+(1051, 'Lunes', '12:00:00', '18:00:00', 'Limpieza Vespertina (Pabellón B)', 'bg-secondary'),
+(1062, 'Sábado', '06:00:00', '18:00:00', 'Guardia de Seguridad Diurna', 'bg-dark'),
+(1063, 'Domingo', '18:00:00', '06:00:00', 'Guardia de Seguridad Nocturna', 'bg-dark');
+
+CREATE TABLE IF NOT EXISTS `cronograma_eventos` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `fecha` date NOT NULL,
+  `hora_inicio` time NOT NULL,
+  `hora_fin` time NOT NULL,
+  `titulo` varchar(150) NOT NULL,
+  `descripcion` text DEFAULT NULL,
+  `creador_id` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO `cronograma_eventos` (`id`, `fecha`, `hora_inicio`, `hora_fin`, `titulo`, `descripcion`, `creador_id`) VALUES
+(201, DATE_SUB(CURDATE(), INTERVAL 1 DAY), '14:00:00', '16:00:00', 'Consejo Directivo Extraordinario', 'Revisión de presupuesto y asignación de aulas.', 1),
+(202, CURDATE(), '09:00:00', '11:00:00', 'Taller de Formación Docente', 'Estrategias de evaluación continua para el nuevo periodo.', 1),
+(203, CURDATE(), '13:00:00', '14:30:00', 'Inspección de Infraestructura', 'Recorrido por laboratorios y áreas verdes con el equipo de mantenimiento.', 1),
+(204, DATE_ADD(CURDATE(), INTERVAL 3 DAY), '07:30:00', '12:00:00', 'Entrega de Boletines', 'Atención a padres y representantes (1er y 2do Lapso).', 1),
+(205, DATE_ADD(CURDATE(), INTERVAL 7 DAY), '10:00:00', '11:00:00', 'Simulacro de Evacuación', 'Actividad general de prevención y desalojo con Bomberos.', 1);
+
+CREATE TABLE IF NOT EXISTS `cronograma_participantes` (
+  `evento_id` int(11) NOT NULL,
+  `personal_id` int(11) NOT NULL,
+  PRIMARY KEY (`evento_id`,`personal_id`),
+  KEY `personal_id` (`personal_id`),
+  CONSTRAINT `cronograma_participantes_ibfk_1` FOREIGN KEY (`evento_id`) REFERENCES `cronograma_eventos` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `cronograma_participantes_ibfk_2` FOREIGN KEY (`personal_id`) REFERENCES `personal` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO `cronograma_participantes` (`evento_id`, `personal_id`) SELECT 201, id FROM personal WHERE id BETWEEN 1001 AND 1009;
+INSERT IGNORE INTO `cronograma_participantes` (`evento_id`, `personal_id`) SELECT 202, id FROM personal WHERE id BETWEEN 1010 AND 1037;
+INSERT IGNORE INTO `cronograma_participantes` (`evento_id`, `personal_id`) VALUES (203, 1001), (203, 1008);
+INSERT IGNORE INTO `cronograma_participantes` (`evento_id`, `personal_id`) SELECT 203, id FROM personal WHERE id BETWEEN 1050 AND 1055;
+INSERT IGNORE INTO `cronograma_participantes` (`evento_id`, `personal_id`) VALUES (204, 1002), (204, 1003);
+INSERT IGNORE INTO `cronograma_participantes` (`evento_id`, `personal_id`) SELECT 204, id FROM personal WHERE id BETWEEN 1010 AND 1041;
+INSERT IGNORE INTO `cronograma_participantes` (`evento_id`, `personal_id`) SELECT 205, id FROM personal WHERE id IN (1001, 1004, 1012, 1025, 1030, 1045, 1052, 1065, 1070);
+
+CREATE TABLE IF NOT EXISTS `organigrama_institucional` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `estructura_json` longtext NOT NULL,
+  `fecha_actualizacion` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `usuarios_sistema` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `personal_id` int(11) DEFAULT NULL,
+  `rol_id` int(11) NOT NULL,
+  `username` varchar(50) NOT NULL,
+  `password_hash` varchar(255) NOT NULL,
+  `estado` enum('Activo','Bloqueado') DEFAULT 'Activo',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `username` (`username`),
+  KEY `personal_id` (`personal_id`),
+  KEY `rol_id` (`rol_id`),
+  CONSTRAINT `usuarios_sistema_ibfk_1` FOREIGN KEY (`personal_id`) REFERENCES `personal` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `usuarios_sistema_ibfk_2` FOREIGN KEY (`rol_id`) REFERENCES `cat_roles_sistema` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO `usuarios_sistema` (`id`, `personal_id`, `rol_id`, `username`, `password_hash`, `estado`) VALUES
+(1, NULL, 1, 'admin', '$2y$10$FOupjgLEe4PqHRhU0PTLTu9h6Bf4fgUR2aDPQUTPt0tmmFTeddfze', 'Activo');
+
+CREATE TABLE IF NOT EXISTS `sesiones_usuarios` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `usuario_id` int(11) NOT NULL,
+  `token` varchar(255) DEFAULT NULL,
+  `ip_direccion` varchar(45) DEFAULT NULL,
+  `dispositivo_agente` text DEFAULT NULL,
+  `fecha_inicio` timestamp NOT NULL DEFAULT current_timestamp(),
+  `fecha_expiracion` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `usuario_id` (`usuario_id`),
+  CONSTRAINT `sesiones_usuarios_ibfk_1` FOREIGN KEY (`usuario_id`) REFERENCES `usuarios_sistema` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `historial_auditoria` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `usuario_id` int(11) DEFAULT NULL,
+  `tabla_afectada` varchar(50) NOT NULL,
+  `registro_id` int(11) DEFAULT NULL,
+  `accion` enum('CREAR','ACTUALIZAR','ELIMINAR','LOGIN','ACCESO_CRITICO','EXPORTAR') NOT NULL,
+  `descripcion_detallada` text NOT NULL,
+  `ip_origen` varchar(45) DEFAULT NULL,
+  `fecha_evento` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `usuario_id` (`usuario_id`),
+  CONSTRAINT `historial_auditoria_ibfk_1` FOREIGN KEY (`usuario_id`) REFERENCES `usuarios_sistema` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+COMMIT;
+SET FOREIGN_KEY_CHECKS = 1;

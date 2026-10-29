@@ -79,6 +79,22 @@ include '../Includes/sidebar.php';
 <!-- PESTAÑA 1: APARIENCIA (SUPER PERSONALIZABLE) -->
     <div class="tab-pane fade show active" id="apariencia">
         
+        <!-- CENTRO DE AYUDA Y TUTORIAL INTERACTIVO -->
+        <div class="card shadow-sm border-0 mb-4 border-start border-4 border-warning bg-body-tertiary">
+            <div class="card-body p-3 d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-compass-fill text-warning fs-1 me-3"></i>
+                    <div>
+                        <h5 class="fw-bold mb-0">Guía Interactiva del Sistema</h5>
+                        <small class="text-muted">¿Tienes dudas sobre cómo usar el portal? Puedes reiniciar el tutorial interactivo cuando quieras.</small>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-warning rounded-pill px-4 fw-bold shadow-sm" onclick="iniciarTutorialManual()">
+                    <i class="bi bi-play-circle-fill me-1"></i> Iniciar Tutorial Guiado
+                </button>
+            </div>
+        </div>
+
         <!-- FONDO DE PANTALLA -->
         <div class="card shadow-sm border-0 mb-4 border-start border-4 border-info bg-body-tertiary">
             <div class="card-body p-4">
@@ -94,7 +110,7 @@ include '../Includes/sidebar.php';
                         <input type="url" id="bgUrlInput" class="form-control" placeholder="https://ejemplo.com/fondo.jpg">
                     </div>
                     <div class="col-md-2 d-flex align-items-end">
-                        <button id="resetBgBtn" class="btn btn-outline-danger w-100 fw-bold"><i class="bi bi-trash"></i> Quitar Fondo</button>
+                        <button id="resetBgBtn" class="btn btn-outline-danger w-100 fw-bold" onclick="quitarFondoCompleto()"><i class="bi bi-trash"></i> Quitar Fondo</button>
                     </div>
                 </div>
             </div>
