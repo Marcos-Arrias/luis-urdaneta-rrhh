@@ -73,6 +73,45 @@ if (!isset($_SESSION['admin_id'])) {
             border-left: 4px solid #fff; 
         }
 </style>
+
+<script>
+    // ==========================================
+    // CONTROL DE INSTANCIA ÚNICA (PESTAÑAS)
+    // ==========================================
+    const appChannel = new BroadcastChannel('rrhh_app_channel');
+    let soyLaInstanciaOriginal = true;
+
+    // Al cargar la página, grito a las demás pestañas: "¡Me acabo de abrir!"
+    appChannel.postMessage('nueva_instancia_abierta');
+
+    // Escuchar mensajes de otras pestañas
+    appChannel.onmessage = (evento) => {
+        
+        // Si alguien grita que se acaba de abrir, y YO soy el original...
+        if (evento.data === 'nueva_instancia_abierta' && soyLaInstanciaOriginal) {
+            // Le respondo: "¡Oye, yo llegué primero!"
+            appChannel.postMessage('instancia_previa_activa');
+        } 
+        
+        // Si acabo de entrar y alguien me dice que ya estaba antes...
+        else if (evento.data === 'instancia_previa_activa') {
+            soyLaInstanciaOriginal = false;
+            
+            // Destruyo la interfaz visual de esta nueva pestaña (Priorizo la antigua)
+            document.body.innerHTML = `
+                <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100vh; background:#212529; color:white; font-family:sans-serif; text-align:center; padding: 20px;">
+                    <h1 style="color:#ffc107;">⚠️ Sistema en Uso</h1>
+                    <p style="font-size: 1.2rem;">Ya tienes este sistema abierto en otra pestaña.</p>
+                    <p style="color:#adb5bd;">Por razones de seguridad y para evitar conflictos de datos, solo se permite una instancia a la vez. Por favor, cierra esta pestaña y usa la original (la más antigua).</p>
+                    </div>
+            `;
+            
+            // Detengo cualquier otro script
+            window.stop(); 
+        }
+    };
+</script>
+
 </head>
 <body>
 <div id="wrapper">
