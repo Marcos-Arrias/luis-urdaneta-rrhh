@@ -9,7 +9,7 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS organigrama_jerarquia (
     FOREIGN KEY (jefe_id) REFERENCES personal(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-// 2. PROCESAMIENTO AJAX DEL GUARDADO (REPARADO Y BLINDADO)
+// 2. PROCESAMIENTO AJAX DEL GUARDADO
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nodos'])) {
     ob_clean();
     header('Content-Type: application/json; charset=utf-8');
@@ -21,11 +21,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nodos'])) {
         
         $pdo->beginTransaction();
         
-        // Vaciamos la tabla para escribir la estructura actual
         $pdo->exec("DELETE FROM organigrama_jerarquia"); 
         
         if (count($nodos) > 0) {
-            // Obtenemos los IDs reales de personal para evitar violaciones de clave foránea
             $stmtCheck = $pdo->query("SELECT id FROM personal");
             $personalExistente = array_flip($stmtCheck->fetchAll(PDO::FETCH_COLUMN, 0));
 
@@ -36,13 +34,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nodos'])) {
                 $emp_id = intval($n['id'] ?? 0);
                 $jefe_id = (!empty($n['pid'])) ? intval($n['pid']) : null;
                 
-                // Solo insertar si el trabajador existe en la tabla personal
                 if (isset($personalExistente[$emp_id])) {
-                    // Si el supervisor asignado no existe, se establece como NULL (Director)
                     if ($jefe_id !== null && !isset($personalExistente[$jefe_id])) {
                         $jefe_id = null;
                     }
-                    // Evitar que sea su propio jefe
                     if ($emp_id === $jefe_id) {
                         $jefe_id = null;
                     }
@@ -80,7 +75,6 @@ $queryArbol = $pdo->query("
 
 $data_tree = [];
 foreach ($queryArbol as $row) {
-    // Generador de avatar inteligente con iniciales
     $iniciales = mb_strtoupper(mb_substr($row['nombres'], 0, 1, 'UTF-8') . mb_substr($row['apellidos'], 0, 1, 'UTF-8'), 'UTF-8');
     $color = '0d6efd';
     $textoColor = 'ffffff';
@@ -130,14 +124,15 @@ include '../Includes/header.php';
 include '../Includes/sidebar.php';
 ?>
 
-<!-- Librería Oficial OrgChart.js Local -->
+<!-- Librerías JS Locales -->
 <script src="../JS/OrgChart.js"></script>
+<script src="../JS/html2canvas.min.js"></script> <!-- Necesaria para la exportación offline -->
 
 <style>
     #tree-container { width: 100%; height: 750px; background-color: var(--bs-body-tertiary); border-radius: 1rem; border: 1px solid var(--bs-border-color); position: relative; overflow: hidden;}
-    #tree { width: 100%; height: 100%; }
+    #tree { width: 100%; height: 100%; transition: all 0.3s ease; }
     
-    /* Adaptación del gráfico y buscador al modo oscuro */
+    /* Adaptación del gráfico al modo oscuro */
     [data-bs-theme="dark"] .boc-light rect { fill: #212529 !important; stroke: #495057 !important; }
     [data-bs-theme="dark"] .boc-light text { fill: #ffffff !important; }
     [data-bs-theme="dark"] .node rect { fill: #212529 !important; }
@@ -145,14 +140,31 @@ include '../Includes/sidebar.php';
     [data-bs-theme="dark"] .boc-search { background-color: #212529 !important; border-color: #495057 !important; color: white !important; }
     [data-bs-theme="dark"] .boc-search input { color: white !important; }
     
-    /* Ocultar botones y menús default */
+    /* MODIFICADORES DINÁMICOS DE VISTA (MONOCROMÁTICO Y SIN ICONOS) */
+    #tree.hide-avatars image { display: none !important; }
+    
+    #tree.mono-mode .node rect { fill: #ffffff !important; stroke: #000000 !important; stroke-width: 2px !important; }
+    #tree.mono-mode .node text { fill: #000000 !important; }
+    #tree.mono-mode .link { stroke: #000000 !important; stroke-width: 2px !important; }
+    /* Para modo oscuro si fuerzan el monocromo */
+    [data-bs-theme="dark"] #tree.mono-mode .node rect { fill: #212529 !important; stroke: #ffffff !important; }
+    [data-bs-theme="dark"] #tree.mono-mode .node text { fill: #ffffff !important; }
+    [data-bs-theme="dark"] #tree.mono-mode .link { stroke: #ffffff !important; }
+
+    /* Ocultar botones y menús default de la librería */
     .boc-edit-form, .edit-form, div[data-balkan-orgchart-edit-form], .boc-edit-button, .boc-add-button, .node-menu { display: none !important; opacity: 0 !important; visibility: hidden !important; }
     
-    /* Cursor para indicar que las ventanas se pueden arrastrar */
+    /* Cursor para ventanas modales arrastrables */
     .modal-header { cursor: move; }
-
-    /* Inseleccionable */
     .modal-content { user-select: none; -webkit-user-select: none; -moz-user-select: none; }
+
+    /* ANIMACIÓN PARA EL BOTÓN DE GUARDAR (CAMBIOS PENDIENTES) */
+    @keyframes pulse-red {
+        0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+        70% { box-shadow: 0 0 0 12px rgba(220, 53, 69, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+    }
+    .pulse-warning { animation: pulse-red 1.5s infinite; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -163,20 +175,17 @@ include '../Includes/sidebar.php';
     <div class="d-flex gap-2 align-items-center">
         <button class="btn btn-outline-danger rounded-pill fw-bold shadow-sm" onclick="vaciarArbol()" title="Vaciar organigrama"><i class="bi bi-trash"></i></button>
         
-        <!-- MENÚ DE EXPORTACIÓN MULTI-FORMATO -->
-        <div class="dropdown">
-            <button class="btn btn-outline-secondary rounded-pill fw-bold shadow-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                <i class="bi bi-download me-1"></i> Exportar
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end shadow border-0 mt-2">
-                <li><button class="dropdown-item py-2 fw-medium" onclick="exportarOrganigrama('png')"><i class="bi bi-file-earmark-image me-2 text-primary"></i>Imagen (PNG)</button></li>
-                <li><button class="dropdown-item py-2 fw-medium" onclick="exportarOrganigrama('pdf')"><i class="bi bi-file-earmark-pdf me-2 text-danger"></i>Documento (PDF)</button></li>
-                <li><button class="dropdown-item py-2 fw-medium" onclick="exportarOrganigrama('svg')"><i class="bi bi-file-earmark-code me-2 text-warning"></i>Vectorial (SVG)</button></li>
-            </ul>
-        </div>
+        <!-- BOTÓN: VISTA Y EXPORTACIÓN -->
+        <button class="btn btn-outline-secondary rounded-pill fw-bold shadow-sm" onclick="abrirModalExportacion()">
+            <i class="bi bi-sliders me-1"></i> Exportación
+        </button>
 
         <button class="btn btn-success shadow-sm rounded-pill px-4 fw-bold" onclick="abrirModalAgregar()"><i class="bi bi-person-plus-fill me-1"></i> Añadir Personal</button>
-        <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold" onclick="guardarOrganigrama()" id="btnGuardar"><i class="bi bi-save me-1"></i> Guardar Cambios</button>
+        
+        <!-- BOTÓN GUARDAR (Dinámico) -->
+        <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold transition-all" onclick="guardarOrganigrama()" id="btnGuardar">
+            <i class="bi bi-save me-1"></i> Guardar Cambios
+        </button>
     </div>
 </div>
 
@@ -187,7 +196,59 @@ include '../Includes/sidebar.php';
 </div>
 
 <!-- ========================================== -->
-<!-- 1. MENÚ DE OPCIONES DEL NODO -->
+<!-- NUEVO MODAL: CONFIGURACIÓN VISUAL Y EXPORTACIÓN -->
+<!-- ========================================== -->
+<div class="modal fade" id="modalExportacion" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-secondary text-white py-3">
+                <h5 class="modal-title fw-bold"><i class="bi bi-sliders me-2"></i>Apariencia y Exportación</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body bg-body-tertiary p-4">
+                
+                <h6 class="fw-bold text-primary mb-3"><i class="bi bi-palette-fill me-2"></i>1. Filtros Visuales</h6>
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-3 fs-6">
+                            <input class="form-check-input" type="checkbox" id="chkMonoMode" onchange="aplicarFiltrosVisuales()">
+                            <label class="form-check-label fw-medium" for="chkMonoMode">Modo Monocromático (B/N)</label>
+                            <small class="d-block text-muted" style="font-size: 0.75rem;">Ideal para imprimir sin gastar tinta a color.</small>
+                        </div>
+                        <div class="form-check form-switch fs-6">
+                            <input class="form-check-input" type="checkbox" id="chkHideIcons" onchange="aplicarFiltrosVisuales()">
+                            <label class="form-check-label fw-medium" for="chkHideIcons">Ocultar Fotos e Íconos</label>
+                            <small class="d-block text-muted" style="font-size: 0.75rem;">Muestra solo el texto para un diseño más limpio.</small>
+                        </div>
+                    </div>
+                </div>
+
+                <h6 class="fw-bold text-success mb-3"><i class="bi bi-distribute-vertical me-2"></i>2. Orden y Estructura</h6>
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-body">
+                        <select id="selectEstructura" class="form-select shadow-sm" onchange="cambiarEstructuraArbol()">
+                            <option value="mixed">Mixto (Automático, ahorra espacio)</option>
+                            <option value="vertical">Vertical (Clásico, de arriba hacia abajo)</option>
+                            <option value="horizontal">Horizontal (De izquierda a derecha)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <h6 class="fw-bold text-danger mb-3"><i class="bi bi-download me-2"></i>3. Descargar Documento (Offline)</h6>
+                <p class="small text-muted mb-2">Se exportará el gráfico localmente sin usar internet.</p>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-primary flex-fill fw-bold py-2" onclick="ejecutarExportacion('png')"><i class="bi bi-filetype-png d-block fs-3 mb-1"></i> Imagen PNG</button>
+                    <button class="btn btn-outline-danger flex-fill fw-bold py-2" onclick="ejecutarExportacion('pdf')"><i class="bi bi-printer d-block fs-3 mb-1"></i> Imprimir/PDF</button>
+                    <button class="btn btn-outline-warning text-dark flex-fill fw-bold py-2" onclick="ejecutarExportacion('svg')"><i class="bi bi-filetype-svg d-block fs-3 mb-1"></i> Vector SVG</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODALES EXISTENTES (Opciones, Detalles, Editar, Añadir) -->
 <!-- ========================================== -->
 <div class="modal fade" id="modalOpcionesNodo" tabindex="-1" data-bs-backdrop="false">
     <div class="modal-dialog modal-dialog-centered modal-sm">
@@ -218,9 +279,6 @@ include '../Includes/sidebar.php';
     </div>
 </div>
 
-<!-- ========================================== -->
-<!-- 2. VER DETALLES (MÁS COMPLETO Y CON ACORDEÓN) -->
-<!-- ========================================== -->
 <div class="modal fade" id="modalVerDetalles" tabindex="-1" data-bs-backdrop="false">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border border-info shadow-lg">
@@ -271,9 +329,6 @@ include '../Includes/sidebar.php';
     </div>
 </div>
 
-<!-- ========================================== -->
-<!-- 3. MODAL: EDITAR POSICIÓN EN EL ÁRBOL -->
-<!-- ========================================== -->
 <div class="modal fade" id="modalEditPosition" tabindex="-1" data-bs-backdrop="false">
     <div class="modal-dialog modal-dialog-centered modal-sm">
         <div class="modal-content border border-warning shadow-lg">
@@ -294,9 +349,6 @@ include '../Includes/sidebar.php';
     </div>
 </div>
 
-<!-- ========================================== -->
-<!-- 4. MODAL: AGREGAR AL ÁRBOL -->
-<!-- ========================================== -->
 <div class="modal fade" id="modalAddNode" tabindex="-1" data-bs-backdrop="false">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border border-success shadow-lg">
@@ -332,6 +384,7 @@ include '../Includes/sidebar.php';
 
     OrgChart.SEARCH_PLACEHOLDER = "🔍 Buscar empleado (Nombre, Cargo o Cédula)...";
 
+    // Inicialización del Gráfico
     let chart = new OrgChart(document.getElementById("tree"), {
         template: "luba",
         layout: OrgChart.mixed, 
@@ -345,7 +398,145 @@ include '../Includes/sidebar.php';
         nodes: dataTree
     });
 
-    // BLOQUEAR EL OFFCANVAS POR DEFECTO
+    // ==========================================
+    // SISTEMA DE DETECCIÓN DE CAMBIOS PENDIENTES
+    // ==========================================
+    let tieneCambiosSinGuardar = false;
+
+    function marcarComoModificado() {
+        tieneCambiosSinGuardar = true;
+        let btn = document.getElementById('btnGuardar');
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-danger', 'pulse-warning');
+        btn.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i> ¡Guardar Cambios!';
+    }
+
+    function marcarComoGuardado() {
+        tieneCambiosSinGuardar = false;
+        let btn = document.getElementById('btnGuardar');
+        btn.classList.remove('btn-danger', 'pulse-warning');
+        btn.classList.add('btn-primary');
+        btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Cambios';
+    }
+
+    // Detectar arrastrar y soltar un nodo a un nuevo jefe
+    chart.onDrop(function (sender, draggedNodeId, droppedNodeId) {
+        marcarComoModificado();
+    });
+
+    // Advertencia al intentar salir sin guardar
+    window.addEventListener('beforeunload', function (e) {
+        if (tieneCambiosSinGuardar) {
+            e.preventDefault();
+            e.returnValue = 'Tienes cambios en el organigrama sin guardar. ¿Seguro que quieres salir?';
+        }
+    });
+
+    // ==========================================
+    // LÓGICA DEL MENÚ DE VISTA Y EXPORTACIÓN (OFFLINE TOTAL)
+    // ==========================================
+    function abrirModalExportacion() {
+        new bootstrap.Modal(document.getElementById('modalExportacion')).show();
+    }
+
+    function aplicarFiltrosVisuales() {
+        let treeEl = document.getElementById('tree');
+        let chkMono = document.getElementById('chkMonoMode').checked;
+        let chkIcons = document.getElementById('chkHideIcons').checked;
+
+        if(chkMono) treeEl.classList.add('mono-mode');
+        else treeEl.classList.remove('mono-mode');
+
+        if(chkIcons) treeEl.classList.add('hide-avatars');
+        else treeEl.classList.remove('hide-avatars');
+    }
+
+    function cambiarEstructuraArbol() {
+        let formato = document.getElementById('selectEstructura').value;
+        if (formato === 'vertical') {
+            chart.config.layout = OrgChart.normal;
+            chart.config.orientation = OrgChart.orientation.top;
+        } else if (formato === 'horizontal') {
+            chart.config.layout = OrgChart.normal;
+            chart.config.orientation = OrgChart.orientation.left;
+        } else {
+            chart.config.layout = OrgChart.mixed;
+            chart.config.orientation = OrgChart.orientation.top;
+        }
+        chart.draw();
+    }
+
+    // NUEVO MOTOR DE EXPORTACIÓN 100% LOCAL Y OFFLINE
+    function ejecutarExportacion(formato) {
+        let timestamp = new Date().toISOString().slice(0, 10);
+        let filename = "Organigrama_Luis_Urdaneta_" + timestamp;
+        let contenedor = document.getElementById('tree');
+
+        // Cerrar modal
+        bootstrap.Modal.getInstance(document.getElementById('modalExportacion')).hide();
+
+        if (formato === 'svg') {
+            // Extraer el código SVG real incrustado en el DOM
+            let svgElement = contenedor.querySelector('svg');
+            if(!svgElement) return alert('No se pudo generar el vector.');
+            
+            let svgData = new XMLSerializer().serializeToString(svgElement);
+            let blob = new Blob([svgData], {type: "image/svg+xml;charset=utf-8"});
+            let url = URL.createObjectURL(blob);
+            let a = document.createElement('a');
+            a.href = url;
+            a.download = filename + ".svg";
+            a.click();
+            URL.revokeObjectURL(url);
+        } 
+        else if (formato === 'png') {
+            if(typeof html2canvas === 'undefined') return alert("Librería html2canvas no detectada.");
+            
+            // Reajustar vista temporalmente para que capture todo
+            chart.fit();
+            setTimeout(() => {
+                html2canvas(contenedor, { backgroundColor: '#ffffff', scale: 2 }).then(canvas => {
+                    let a = document.createElement('a');
+                    a.href = canvas.toDataURL("image/png");
+                    a.download = filename + ".png";
+                    a.click();
+                });
+            }, 500); // Esperar que la animación del fit termine
+        } 
+        else if (formato === 'pdf') {
+            if(typeof html2canvas === 'undefined') return alert("Librería html2canvas no detectada.");
+            
+            chart.fit();
+            setTimeout(() => {
+                html2canvas(contenedor, { backgroundColor: '#ffffff', scale: 2 }).then(canvas => {
+                    let imgData = canvas.toDataURL("image/jpeg", 1.0);
+                    let pdfWindow = window.open("");
+                    pdfWindow.document.write(`
+                        <html><head><title>${filename}</title>
+                        <style>
+                            @page { size: landscape; margin: 0; }
+                            body { margin: 0; display:flex; justify-content:center; align-items:center; height:100vh; background:white; }
+                            img { max-width: 100%; max-height: 100vh; object-fit: contain; }
+                        </style>
+                        </head><body>
+                        <img src="${imgData}">
+                        <script>
+                            window.onload = function() { 
+                                setTimeout(() => { window.print(); window.close(); }, 500);
+                            };
+                        <\/script>
+                        </body></html>
+                    `);
+                    pdfWindow.document.close();
+                });
+            }, 500);
+        }
+    }
+
+    // ==========================================
+    // RESTO DE LAS FUNCIONES DEL ORGANIGRAMA
+    // ==========================================
+
     chart.editUI.on('show', function (sender, nodeId) {
         let nodeData = chart.get(nodeId);
         document.getElementById('opcionesNodeId').value = nodeId;
@@ -354,24 +545,6 @@ include '../Includes/sidebar.php';
         return false; 
     });
 
-    // EXPORTACIÓN MULTI-FORMATO (PNG, PDF, SVG)
-    function exportarOrganigrama(formato) {
-        if (!chart) return;
-        let configExport = {
-            filename: "Organigrama_Luis_Urdaneta_" + (new Date().toISOString().slice(0, 10)),
-            expandChildren: true
-        };
-
-        if (formato === 'png') {
-            chart.exportPNG(configExport);
-        } else if (formato === 'pdf') {
-            chart.exportPDF(configExport);
-        } else if (formato === 'svg') {
-            chart.exportSVG(configExport);
-        }
-    }
-
-    // GESTIÓN DEL MENÚ
     function abrirDesdeMenu(accion) {
         bootstrap.Modal.getInstance(document.getElementById('modalOpcionesNodo')).hide();
         let id = document.getElementById('opcionesNodeId').value;
@@ -422,12 +595,12 @@ include '../Includes/sidebar.php';
             else if (accion === 'eliminar') {
                 if(confirm("¿Seguro que desea quitar a " + node.name + " del esquema gráfico?")) {
                     chart.removeNode(id);
+                    marcarComoModificado();
                 }
             }
         }, 350); 
     }
 
-    // AÑADIR NODO
     function abrirModalAgregar() {
         let selectJefe = document.getElementById('selectJefeAgregar');
         selectJefe.innerHTML = '<option value="">Ninguno (Será Nodo Raíz / Director)</option>';
@@ -474,6 +647,7 @@ include '../Includes/sidebar.php';
                 ingreso: empData.fecha_ingreso,
                 estado: empData.estado_laboral
             });
+            marcarComoModificado();
             bootstrap.Modal.getInstance(document.getElementById('modalAddNode')).hide();
         }
     }
@@ -487,18 +661,17 @@ include '../Includes/sidebar.php';
         nodeData.pid = pid ? parseInt(pid) : null;
         chart.updateNode(nodeData);
         
+        marcarComoModificado();
         bootstrap.Modal.getInstance(document.getElementById('modalEditPosition')).hide();
     }
 
     function vaciarArbol() {
         if(confirm('¿Seguro que desea limpiar todo el esquema visual? (Recuerde hacer clic en Guardar Cambios para sincronizar).')) {
             chart.load([]); 
+            marcarComoModificado();
         }
     }
 
-    // ========================================================
-    // GUARDADO REAL Y COMPLETO EN LA TABLA organigrama_jerarquia
-    // ========================================================
     async function guardarOrganigrama() {
         let btn = document.getElementById('btnGuardar');
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Guardando...';
@@ -507,7 +680,6 @@ include '../Includes/sidebar.php';
         try {
             let nodosExtraidos = [];
             
-            // Recorremos todos los nodos activos en el gráfico
             for (let id in chart.nodes) {
                 let n = chart.nodes[id];
                 if (n && n.id !== undefined && n.id !== null) {
@@ -530,26 +702,20 @@ include '../Includes/sidebar.php';
             let result = await response.json();
 
             if (result.success) {
-                btn.classList.replace('btn-primary', 'btn-success');
-                btn.innerHTML = `<i class="bi bi-check-circle me-1"></i> Guardado (${result.total})`;
+                marcarComoGuardado();
             } else {
                 alert("Error al guardar: " + result.error);
-                btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Cambios';
+                btn.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i> ¡Guardar Cambios!';
             }
         } catch (error) {
             console.error(error);
             alert("Error de conexión al guardar los datos.");
-            btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Cambios';
+            btn.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i> ¡Guardar Cambios!';
         } finally {
-            setTimeout(() => {
-                btn.classList.replace('btn-success', 'btn-primary');
-                btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Cambios';
-                btn.disabled = false;
-            }, 2500);
+            btn.disabled = false;
         }
     }
 
-    // SCRIPT PARA HACER LOS MODALES ARRASTRABLES
     document.querySelectorAll('.modal-header').forEach(header => {
         let isDragging = false;
         let startX, startY, currentX, currentY;
