@@ -7,12 +7,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($a === 'crear') {
             $hora_entrada = !empty($_POST['hora_entrada']) ? $_POST['hora_entrada'] : null;
             $hora_salida = !empty($_POST['hora_salida']) ? $_POST['hora_salida'] : null;
+            $personal_id = $_POST['personal_id'];
+            $fecha = $_POST['fecha'];
+            $estado = $_POST['estado_asistencia'];
+            $obs = $_POST['observaciones'];
 
-            $pdo->prepare("INSERT INTO asistencias (personal_id, fecha, hora_entrada, hora_salida, estado_asistencia, observaciones) VALUES (?, ?, ?, ?, ?, ?)")
-                ->execute([$_POST['personal_id'], $_POST['fecha'], $hora_entrada, $hora_salida, $_POST['estado_asistencia'], $_POST['observaciones']]);
-            
-            registrarHistorial($pdo, 'Asistencias', 'CREAR', "Registró {$_POST['estado_asistencia']} el {$_POST['fecha']}.");
-            header("Location: asistencias.php?fecha_filtro=" . $_POST['fecha'] . "&msg=creado"); exit;
+            // 1. VERIFICAR SI YA EXISTE UN REGISTRO ESE DÍA
+            $stmtCheck = $pdo->prepare("SELECT id FROM asistencias WHERE personal_id = ? AND fecha = ?");
+            $stmtCheck->execute([$personal_id, $fecha]);
+            $existeId = $stmtCheck->fetchColumn();
+
+            if ($existeId) {
+                // SI EXISTE -> AUTO EDITAR (SOBRESCRIBIR)
+                $pdo->prepare("UPDATE asistencias SET hora_entrada=?, hora_salida=?, estado_asistencia=?, observaciones=? WHERE id=?")
+                    ->execute([$hora_entrada, $hora_salida, $estado, $obs, $existeId]);
+                
+                registrarHistorial($pdo, 'Asistencias', 'ACTUALIZAR', "Actualizó novedad automáticamente (sobrescrita) el $fecha.");
+                header("Location: asistencias.php?fecha_filtro=" . $fecha . "&msg=auto_editado"); 
+                exit;
+            } else {
+                // SI NO EXISTE -> CREAR NORMAL
+                $pdo->prepare("INSERT INTO asistencias (personal_id, fecha, hora_entrada, hora_salida, estado_asistencia, observaciones) VALUES (?, ?, ?, ?, ?, ?)")
+                    ->execute([$personal_id, $fecha, $hora_entrada, $hora_salida, $estado, $obs]);
+                
+                registrarHistorial($pdo, 'Asistencias', 'CREAR', "Registró $estado el $fecha.");
+                header("Location: asistencias.php?fecha_filtro=" . $fecha . "&msg=creado"); 
+                exit;
+            }
             
         } elseif ($a === 'editar') {
             $id = $_POST['id'];
@@ -121,6 +142,19 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
         <i class="bi bi-plus-lg me-1"></i> Reportar Novedad
     </button>
 </div>
+
+<!-- SISTEMA DE ALERTAS (NUEVO) -->
+<?php if(isset($_GET['msg'])): ?>
+    <?php if($_GET['msg'] == 'creado'): ?>
+        <div class="alert alert-success alert-dismissible shadow-sm fade show py-2"><i class="bi bi-check-circle-fill me-2"></i> Asistencia registrada correctamente.<button type="button" class="btn-close pb-2" data-bs-dismiss="alert"></button></div>
+    <?php elseif($_GET['msg'] == 'editado'): ?>
+        <div class="alert alert-info alert-dismissible shadow-sm fade show py-2"><i class="bi bi-pencil-fill me-2"></i> Registro actualizado.<button type="button" class="btn-close pb-2" data-bs-dismiss="alert"></button></div>
+    <?php elseif($_GET['msg'] == 'auto_editado'): ?>
+        <div class="alert alert-warning alert-dismissible border-warning shadow-sm fade show py-2"><i class="bi bi-exclamation-triangle-fill me-2"></i> <strong>Aviso:</strong> El trabajador ya tenía un registro en esta fecha, la información ha sido sobrescrita y actualizada con éxito.<button type="button" class="btn-close pb-2" data-bs-dismiss="alert"></button></div>
+    <?php elseif($_GET['msg'] == 'eliminado'): ?>
+        <div class="alert alert-danger alert-dismissible shadow-sm fade show py-2"><i class="bi bi-trash-fill me-2"></i> Novedad eliminada.<button type="button" class="btn-close pb-2" data-bs-dismiss="alert"></button></div>
+    <?php endif; ?>
+<?php endif; ?>
 
 <!-- NAVEGACIÓN Y SEMÁFORO -->
 <div class="card shadow-sm border-0 rounded-4 mb-4 bg-body-tertiary">
@@ -265,6 +299,11 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
         <input type="hidden" name="accion" id="asist_accion" value="crear">
         <input type="hidden" name="id" id="asist_id">
         
+        <!-- ALERTA DE EDICIÓN AUTOMÁTICA -->
+        <div id="alertaEdicion" class="alert alert-warning d-none py-2 px-3 small mb-3 border-warning shadow-sm">
+            <i class="bi bi-exclamation-triangle-fill me-1 fs-6"></i> <strong>Aviso:</strong> Esta persona ya tiene un reporte hoy. Al guardar, se <b>actualizará (sobrescribirá)</b> la novedad existente.
+        </div>
+
         <div class="mb-3"><label class="form-label small fw-bold">Fecha</label><input type="date" name="fecha" id="asist_fecha" class="form-control" value="<?= $fechaFiltro ?>" required></div>
         <div class="mb-3">
             <label class="form-label small fw-bold">Tipo de Personal</label>
@@ -296,6 +335,7 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
 
 <script>
 const dataPersonal = <?= json_encode($personal_agrupado) ?>;
+const asistenciasHoy = <?= json_encode($datos) ?>; // Datos cargados en la tabla
 
 function cargarPersonal(selectedId = null) {
     const tipo = document.getElementById('select_tipo').value;
@@ -312,6 +352,39 @@ function cargarPersonal(selectedId = null) {
     } else {
         select.disabled = true;
     }
+    
+    // Disparar la validación de duplicados al cargar/cambiar persona
+    verificarDuplicado();
+}
+
+// LÓGICA PARA DETECTAR DUPLICADOS EN TIEMPO REAL EN EL MODAL
+document.getElementById('select_persona').addEventListener('change', verificarDuplicado);
+document.getElementById('asist_fecha').addEventListener('change', verificarDuplicado);
+
+function verificarDuplicado() {
+    let personalId = document.getElementById('select_persona').value;
+    let fechaFiltroActual = '<?= $fechaFiltro ?>';
+    let fechaInput = document.getElementById('asist_fecha').value;
+    let alerta = document.getElementById('alertaEdicion');
+
+    // Solo verificamos contra los datos cargados si la fecha elegida es la misma de la pantalla actual
+    if(personalId && fechaInput === fechaFiltroActual) {
+        let registroExistente = asistenciasHoy.find(a => a.personal_id == personalId);
+        
+        if(registroExistente) {
+            alerta.classList.remove('d-none');
+            // Autocompletar con los datos actuales para que el usuario no sobreescriba en blanco
+            document.getElementById('asist_estado').value = registroExistente.estado_asistencia;
+            document.getElementById('asist_observaciones').value = registroExistente.observaciones || '';
+        } else {
+            alerta.classList.add('d-none');
+            // Limpiar si elige a alguien que no está
+            document.getElementById('asist_estado').value = 'Presente';
+            document.getElementById('asist_observaciones').value = '';
+        }
+    } else {
+        alerta.classList.add('d-none');
+    }
 }
 
 function limpiarModalAsistencia() {
@@ -324,6 +397,7 @@ function limpiarModalAsistencia() {
     document.getElementById('select_persona').disabled = true;
     document.getElementById('asist_estado').value = 'Presente';
     document.getElementById('asist_observaciones').value = '';
+    document.getElementById('alertaEdicion').classList.add('d-none');
 }
 
 function cargarEdicionAsistencia(d) {
@@ -333,6 +407,7 @@ function cargarEdicionAsistencia(d) {
     document.getElementById('asist_fecha').value = d.fecha;
     document.getElementById('asist_estado').value = d.estado_asistencia;
     document.getElementById('asist_observaciones').value = d.observaciones || '';
+    document.getElementById('alertaEdicion').classList.add('d-none'); // Al darle al botón editar no es necesario el aviso
     
     // Seleccionar tipo y recargar las personas preseleccionando la correcta
     document.getElementById('select_tipo').value = d.tipo_personal;
