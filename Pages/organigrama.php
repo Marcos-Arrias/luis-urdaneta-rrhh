@@ -15,18 +15,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nodos'])) {
     header('Content-Type: application/json; charset=utf-8');
     try {
         $nodos = json_decode($_POST['nodos'], true);
-        if (!is_array($nodos)) {
-            throw new Exception("El formato de nodos recibido no es válido.");
-        }
+        if (!is_array($nodos)) throw new Exception("Formato de nodos inválido.");
         
         $pdo->beginTransaction();
-        
         $pdo->exec("DELETE FROM organigrama_jerarquia"); 
         
         if (count($nodos) > 0) {
             $stmtCheck = $pdo->query("SELECT id FROM personal");
             $personalExistente = array_flip($stmtCheck->fetchAll(PDO::FETCH_COLUMN, 0));
-
             $stmt = $pdo->prepare("INSERT INTO organigrama_jerarquia (personal_id, jefe_id) VALUES (?, ?)");
             
             $guardados = 0;
@@ -35,21 +31,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nodos'])) {
                 $jefe_id = (!empty($n['pid'])) ? intval($n['pid']) : null;
                 
                 if (isset($personalExistente[$emp_id])) {
-                    if ($jefe_id !== null && !isset($personalExistente[$jefe_id])) {
-                        $jefe_id = null;
-                    }
-                    if ($emp_id === $jefe_id) {
-                        $jefe_id = null;
-                    }
+                    if ($jefe_id !== null && !isset($personalExistente[$jefe_id])) $jefe_id = null;
+                    if ($emp_id === $jefe_id) $jefe_id = null;
                     
                     $stmt->execute([$emp_id, $jefe_id]);
                     $guardados++;
                 }
             }
         }
-        
         $pdo->commit();
-        registrarHistorial($pdo, 'Organigrama', 'ACTUALIZAR', "Guardó exitosamente la jerarquía institucional ($guardados trabajadores).");
+        registrarHistorial($pdo, 'Organigrama', 'ACTUALIZAR', "Jerarquía guardada ($guardados trabajadores).");
         echo json_encode(['success' => true, 'total' => $guardados]);
     } catch (Exception $e) {
         $pdo->rollBack();
@@ -76,13 +67,11 @@ $queryArbol = $pdo->query("
 $data_tree = [];
 foreach ($queryArbol as $row) {
     $iniciales = mb_strtoupper(mb_substr($row['nombres'], 0, 1, 'UTF-8') . mb_substr($row['apellidos'], 0, 1, 'UTF-8'), 'UTF-8');
-    $color = '0d6efd';
-    $textoColor = 'ffffff';
+    $color = '0d6efd'; $textoColor = 'ffffff';
     if ($row['tipo_personal_id'] == 2) $color = '198754';
     if ($row['tipo_personal_id'] == 3) { $color = 'ffc107'; $textoColor = '000000'; }
     
     $svgAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23$color'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%23$textoColor' font-size='40' font-family='Arial' font-weight='bold'>$iniciales</text></svg>";
-
     $img = !empty($row['foto']) ? $row['foto'] : $svgAvatar;
     
     $data_tree[] = [
@@ -106,7 +95,7 @@ foreach ($queryArbol as $row) {
 }
 $jerarquia_actual = json_encode($data_tree, JSON_UNESCAPED_UNICODE);
 
-// 4. CARGAR PERSONAL ACTIVO PARA EL SELECTOR DEL MODAL "AÑADIR"
+// 4. CARGAR PERSONAL PARA AÑADIR
 $empleados = $pdo->query("
     SELECT p.id, p.nombres, p.apellidos, c.nombre as cargo, c.tipo_personal_id,
            p.cedula, p.fecha_ingreso, p.estado_laboral,
@@ -124,15 +113,14 @@ include '../Includes/header.php';
 include '../Includes/sidebar.php';
 ?>
 
-<!-- Librerías JS Locales -->
+<!-- Librería Oficial OrgChart.js Local -->
 <script src="../JS/OrgChart.js"></script>
-<script src="../JS/html2canvas.min.js"></script> <!-- Necesaria para la exportación offline -->
 
 <style>
     #tree-container { width: 100%; height: 750px; background-color: var(--bs-body-tertiary); border-radius: 1rem; border: 1px solid var(--bs-border-color); position: relative; overflow: hidden;}
-    #tree { width: 100%; height: 100%; transition: all 0.3s ease; }
+    #tree { width: 100%; height: 100%; }
     
-    /* Adaptación del gráfico al modo oscuro */
+    /* Adaptación al modo oscuro */
     [data-bs-theme="dark"] .boc-light rect { fill: #212529 !important; stroke: #495057 !important; }
     [data-bs-theme="dark"] .boc-light text { fill: #ffffff !important; }
     [data-bs-theme="dark"] .node rect { fill: #212529 !important; }
@@ -140,25 +128,35 @@ include '../Includes/sidebar.php';
     [data-bs-theme="dark"] .boc-search { background-color: #212529 !important; border-color: #495057 !important; color: white !important; }
     [data-bs-theme="dark"] .boc-search input { color: white !important; }
     
-    /* MODIFICADORES DINÁMICOS DE VISTA (MONOCROMÁTICO Y SIN ICONOS) */
+    /* MODOS PERSONALIZADOS EN PANTALLA */
     #tree.hide-avatars image { display: none !important; }
-    
     #tree.mono-mode .node rect { fill: #ffffff !important; stroke: #000000 !important; stroke-width: 2px !important; }
     #tree.mono-mode .node text { fill: #000000 !important; }
     #tree.mono-mode .link { stroke: #000000 !important; stroke-width: 2px !important; }
-    /* Para modo oscuro si fuerzan el monocromo */
-    [data-bs-theme="dark"] #tree.mono-mode .node rect { fill: #212529 !important; stroke: #ffffff !important; }
-    [data-bs-theme="dark"] #tree.mono-mode .node text { fill: #ffffff !important; }
-    [data-bs-theme="dark"] #tree.mono-mode .link { stroke: #ffffff !important; }
 
-    /* Ocultar botones y menús default de la librería */
-    .boc-edit-form, .edit-form, div[data-balkan-orgchart-edit-form], .boc-edit-button, .boc-add-button, .node-menu { display: none !important; opacity: 0 !important; visibility: hidden !important; }
-    
-    /* Cursor para ventanas modales arrastrables */
+    /* CONTENEDOR EXCLUSIVO PARA IMPRESIÓN / PDF (BLINDADO) */
+    #print-container { display: none; }
+    @media print {
+        #wrapper, .modal, .modal-backdrop, #bulk-toolbar { display: none !important; }
+        #print-container {
+            display: flex !important;
+            justify-content: center;
+            align-items: center;
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            background: white !important;
+            z-index: 999999;
+        }
+        @page { size: landscape; margin: 5mm; }
+    }
+
+    .boc-edit-form, .edit-form, div[data-balkan-orgchart-edit-form], .boc-edit-button, .boc-add-button, .node-menu { display: none !important; }
     .modal-header { cursor: move; }
-    .modal-content { user-select: none; -webkit-user-select: none; -moz-user-select: none; }
 
-    /* ANIMACIÓN PARA EL BOTÓN DE GUARDAR (CAMBIOS PENDIENTES) */
+    /* ANIMACIÓN DEL BOTÓN DE GUARDAR */
     @keyframes pulse-red {
         0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
         70% { box-shadow: 0 0 0 12px rgba(220, 53, 69, 0); }
@@ -174,18 +172,9 @@ include '../Includes/sidebar.php';
     </div>
     <div class="d-flex gap-2 align-items-center">
         <button class="btn btn-outline-danger rounded-pill fw-bold shadow-sm" onclick="vaciarArbol()" title="Vaciar organigrama"><i class="bi bi-trash"></i></button>
-        
-        <!-- BOTÓN: VISTA Y EXPORTACIÓN -->
-        <button class="btn btn-outline-secondary rounded-pill fw-bold shadow-sm" onclick="abrirModalExportacion()">
-            <i class="bi bi-sliders me-1"></i> Exportación
-        </button>
-
+        <button class="btn btn-outline-secondary rounded-pill fw-bold shadow-sm" onclick="abrirModalExportacion()"><i class="bi bi-sliders me-1"></i> Vista y Exportar</button>
         <button class="btn btn-success shadow-sm rounded-pill px-4 fw-bold" onclick="abrirModalAgregar()"><i class="bi bi-person-plus-fill me-1"></i> Añadir Personal</button>
-        
-        <!-- BOTÓN GUARDAR (Dinámico) -->
-        <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold transition-all" onclick="guardarOrganigrama()" id="btnGuardar">
-            <i class="bi bi-save me-1"></i> Guardar Cambios
-        </button>
+        <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold" onclick="guardarOrganigrama()" id="btnGuardar"><i class="bi bi-save me-1"></i> Guardar Cambios</button>
     </div>
 </div>
 
@@ -195,51 +184,46 @@ include '../Includes/sidebar.php';
     </div>
 </div>
 
-<!-- ========================================== -->
-<!-- NUEVO MODAL: CONFIGURACIÓN VISUAL Y EXPORTACIÓN -->
-<!-- ========================================== -->
+<!-- MODAL: CONFIGURACIÓN VISUAL Y EXPORTACIÓN -->
 <div class="modal fade" id="modalExportacion" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-secondary text-white py-3">
-                <h5 class="modal-title fw-bold"><i class="bi bi-sliders me-2"></i>Apariencia y Exportación</h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-sliders me-2"></i>Apariencia y Descarga</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body bg-body-tertiary p-4">
                 
-                <h6 class="fw-bold text-primary mb-3"><i class="bi bi-palette-fill me-2"></i>1. Filtros Visuales</h6>
+                <h6 class="fw-bold text-primary mb-3"><i class="bi bi-palette-fill me-2"></i>1. Opciones Visuales</h6>
                 <div class="card border-0 shadow-sm mb-4">
                     <div class="card-body">
                         <div class="form-check form-switch mb-3 fs-6">
                             <input class="form-check-input" type="checkbox" id="chkMonoMode" onchange="aplicarFiltrosVisuales()">
                             <label class="form-check-label fw-medium" for="chkMonoMode">Modo Monocromático (B/N)</label>
-                            <small class="d-block text-muted" style="font-size: 0.75rem;">Ideal para imprimir sin gastar tinta a color.</small>
                         </div>
                         <div class="form-check form-switch fs-6">
                             <input class="form-check-input" type="checkbox" id="chkHideIcons" onchange="aplicarFiltrosVisuales()">
                             <label class="form-check-label fw-medium" for="chkHideIcons">Ocultar Fotos e Íconos</label>
-                            <small class="d-block text-muted" style="font-size: 0.75rem;">Muestra solo el texto para un diseño más limpio.</small>
                         </div>
                     </div>
                 </div>
 
-                <h6 class="fw-bold text-success mb-3"><i class="bi bi-distribute-vertical me-2"></i>2. Orden y Estructura</h6>
+                <h6 class="fw-bold text-success mb-3"><i class="bi bi-distribute-vertical me-2"></i>2. Distribución</h6>
                 <div class="card border-0 shadow-sm mb-4">
                     <div class="card-body">
                         <select id="selectEstructura" class="form-select shadow-sm" onchange="cambiarEstructuraArbol()">
-                            <option value="mixed">Mixto (Automático, ahorra espacio)</option>
-                            <option value="vertical">Vertical (Clásico, de arriba hacia abajo)</option>
+                            <option value="mixed">Mixto (Optimizado para ahorrar espacio)</option>
+                            <option value="vertical">Vertical (Clásico, de arriba a abajo)</option>
                             <option value="horizontal">Horizontal (De izquierda a derecha)</option>
                         </select>
                     </div>
                 </div>
 
-                <h6 class="fw-bold text-danger mb-3"><i class="bi bi-download me-2"></i>3. Descargar Documento (Offline)</h6>
-                <p class="small text-muted mb-2">Se exportará el gráfico localmente sin usar internet.</p>
+                <h6 class="fw-bold text-danger mb-3"><i class="bi bi-download me-2"></i>3. Guardar Documento</h6>
                 <div class="d-flex gap-2">
-                    <button class="btn btn-outline-primary flex-fill fw-bold py-2" onclick="ejecutarExportacion('png')"><i class="bi bi-filetype-png d-block fs-3 mb-1"></i> Imagen PNG</button>
-                    <button class="btn btn-outline-danger flex-fill fw-bold py-2" onclick="ejecutarExportacion('pdf')"><i class="bi bi-printer d-block fs-3 mb-1"></i> Imprimir/PDF</button>
-                    <button class="btn btn-outline-warning text-dark flex-fill fw-bold py-2" onclick="ejecutarExportacion('svg')"><i class="bi bi-filetype-svg d-block fs-3 mb-1"></i> Vector SVG</button>
+                    <button class="btn btn-outline-primary flex-fill fw-bold py-2" onclick="exportarPNG()"><i class="bi bi-filetype-png d-block fs-3 mb-1"></i> Imagen PNG</button>
+                    <button class="btn btn-outline-danger flex-fill fw-bold py-2" onclick="exportarPDF()"><i class="bi bi-printer d-block fs-3 mb-1"></i> Imprimir / PDF</button>
+                    <button class="btn btn-outline-warning text-dark flex-fill fw-bold py-2" onclick="exportarSVG()"><i class="bi bi-filetype-svg d-block fs-3 mb-1"></i> Vector SVG</button>
                 </div>
 
             </div>
@@ -247,9 +231,7 @@ include '../Includes/sidebar.php';
     </div>
 </div>
 
-<!-- ========================================== -->
-<!-- MODALES EXISTENTES (Opciones, Detalles, Editar, Añadir) -->
-<!-- ========================================== -->
+<!-- MODAL OPCIONES NODO -->
 <div class="modal fade" id="modalOpcionesNodo" tabindex="-1" data-bs-backdrop="false">
     <div class="modal-dialog modal-dialog-centered modal-sm">
         <div class="modal-content border border-secondary shadow-lg">
@@ -261,29 +243,22 @@ include '../Includes/sidebar.php';
                 <input type="hidden" id="opcionesNodeId">
                 <p class="text-center fw-bold mb-3" id="opcionesNodeName"></p>
                 <div class="d-grid gap-2">
-                    <button class="btn btn-info text-white fw-bold text-start" onclick="abrirDesdeMenu('detalles')">
-                        <i class="bi bi-eye-fill me-2"></i> Ver Detalles Completos
-                    </button>
-                    <button class="btn btn-warning text-dark fw-bold text-start" onclick="abrirDesdeMenu('editar')">
-                        <i class="bi bi-diagram-2-fill me-2"></i> Cambiar de Jefe
-                    </button>
-                    <button class="btn btn-success fw-bold text-start" onclick="abrirDesdeMenu('redirigir_crud')">
-                        <i class="bi bi-pencil-square me-2"></i> Editar en Personal
-                    </button>
-                    <button class="btn btn-danger fw-bold text-start mt-2" onclick="abrirDesdeMenu('eliminar')">
-                        <i class="bi bi-trash-fill me-2"></i> Quitar del Organigrama
-                    </button>
+                    <button class="btn btn-info text-white fw-bold text-start" onclick="abrirDesdeMenu('detalles')"><i class="bi bi-eye-fill me-2"></i> Ver Detalles Completos</button>
+                    <button class="btn btn-warning text-dark fw-bold text-start" onclick="abrirDesdeMenu('editar')"><i class="bi bi-diagram-2-fill me-2"></i> Cambiar de Jefe</button>
+                    <button class="btn btn-success fw-bold text-start" onclick="abrirDesdeMenu('redirigir_crud')"><i class="bi bi-pencil-square me-2"></i> Editar en Personal</button>
+                    <button class="btn btn-danger fw-bold text-start mt-2" onclick="abrirDesdeMenu('eliminar')"><i class="bi bi-trash-fill me-2"></i> Quitar del Organigrama</button>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- MODAL VER DETALLES -->
 <div class="modal fade" id="modalVerDetalles" tabindex="-1" data-bs-backdrop="false">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border border-info shadow-lg">
             <div class="modal-header bg-info text-white py-2">
-                <h5 class="modal-title fw-bold"><i class="bi bi-person-vcard me-2"></i>Ficha Detallada (Lectura)</h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-person-vcard me-2"></i>Ficha Detallada</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-3 bg-body-tertiary">
@@ -295,7 +270,6 @@ include '../Includes/sidebar.php';
                         <span class="badge bg-success mt-1" id="detEstado">Estado</span>
                     </div>
                 </div>
-                
                 <div class="accordion shadow-sm" id="accordionDetalles">
                     <div class="accordion-item">
                         <h2 class="accordion-header"><button class="accordion-button fw-bold py-2" type="button" data-bs-toggle="collapse" data-bs-target="#col1">Datos Principales</button></h2>
@@ -329,17 +303,18 @@ include '../Includes/sidebar.php';
     </div>
 </div>
 
+<!-- MODAL CAMBIAR JEFE -->
 <div class="modal fade" id="modalEditPosition" tabindex="-1" data-bs-backdrop="false">
     <div class="modal-dialog modal-dialog-centered modal-sm">
         <div class="modal-content border border-warning shadow-lg">
             <div class="modal-header bg-warning text-dark py-2">
                 <h6 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2"></i>Cambiar Jefe</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close btn-close-modal" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body bg-body-tertiary">
                 <input type="hidden" id="editNodeId">
                 <p class="text-center fw-bold mb-3 text-primary" id="editNodeName"></p>
-                <label class="form-label fw-bold small text-muted">Nuevo Supervisor Directo:</label>
+                <label class="form-label fw-bold small text-muted">Nuevo Supervisor:</label>
                 <select id="selectNuevoJefe" class="form-select shadow-sm"></select>
             </div>
             <div class="modal-footer p-2 border-0">
@@ -349,6 +324,7 @@ include '../Includes/sidebar.php';
     </div>
 </div>
 
+<!-- MODAL AGREGAR NODO -->
 <div class="modal fade" id="modalAddNode" tabindex="-1" data-bs-backdrop="false">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border border-success shadow-lg">
@@ -367,7 +343,7 @@ include '../Includes/sidebar.php';
                     </select>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-bold small text-success">2. ¿A quién le reporta? (Jefe Directo):</label>
+                    <label class="form-label fw-bold small text-success">2. Jefe Inmediato:</label>
                     <select id="selectJefeAgregar" class="form-select shadow-sm border-success"></select>
                 </div>
             </div>
@@ -384,7 +360,6 @@ include '../Includes/sidebar.php';
 
     OrgChart.SEARCH_PLACEHOLDER = "🔍 Buscar empleado (Nombre, Cargo o Cédula)...";
 
-    // Inicialización del Gráfico
     let chart = new OrgChart(document.getElementById("tree"), {
         template: "luba",
         layout: OrgChart.mixed, 
@@ -399,7 +374,7 @@ include '../Includes/sidebar.php';
     });
 
     // ==========================================
-    // SISTEMA DE DETECCIÓN DE CAMBIOS PENDIENTES
+    // SISTEMA DE DETECCIÓN DE CAMBIOS
     // ==========================================
     let tieneCambiosSinGuardar = false;
 
@@ -419,12 +394,8 @@ include '../Includes/sidebar.php';
         btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Cambios';
     }
 
-    // Detectar arrastrar y soltar un nodo a un nuevo jefe
-    chart.onDrop(function (sender, draggedNodeId, droppedNodeId) {
-        marcarComoModificado();
-    });
+    chart.onDrop(function () { marcarComoModificado(); });
 
-    // Advertencia al intentar salir sin guardar
     window.addEventListener('beforeunload', function (e) {
         if (tieneCambiosSinGuardar) {
             e.preventDefault();
@@ -433,7 +404,7 @@ include '../Includes/sidebar.php';
     });
 
     // ==========================================
-    // LÓGICA DEL MENÚ DE VISTA Y EXPORTACIÓN (OFFLINE TOTAL)
+    // EXPORTACIÓN 100% NATIVA Y OFFLINE (REPARADA)
     // ==========================================
     function abrirModalExportacion() {
         new bootstrap.Modal(document.getElementById('modalExportacion')).show();
@@ -441,14 +412,8 @@ include '../Includes/sidebar.php';
 
     function aplicarFiltrosVisuales() {
         let treeEl = document.getElementById('tree');
-        let chkMono = document.getElementById('chkMonoMode').checked;
-        let chkIcons = document.getElementById('chkHideIcons').checked;
-
-        if(chkMono) treeEl.classList.add('mono-mode');
-        else treeEl.classList.remove('mono-mode');
-
-        if(chkIcons) treeEl.classList.add('hide-avatars');
-        else treeEl.classList.remove('hide-avatars');
+        treeEl.classList.toggle('mono-mode', document.getElementById('chkMonoMode').checked);
+        treeEl.classList.toggle('hide-avatars', document.getElementById('chkHideIcons').checked);
     }
 
     function cambiarEstructuraArbol() {
@@ -466,77 +431,138 @@ include '../Includes/sidebar.php';
         chart.draw();
     }
 
-    // NUEVO MOTOR DE EXPORTACIÓN 100% LOCAL Y OFFLINE
-    function ejecutarExportacion(formato) {
-        let timestamp = new Date().toISOString().slice(0, 10);
-        let filename = "Organigrama_Luis_Urdaneta_" + timestamp;
-        let contenedor = document.getElementById('tree');
+    // CLONA EL SVG E INYECTA LOS FILTROS EN SUS ATRIBUTOS REALES
+    function obtenerSvgConFiltros() {
+        let svgOriginal = document.querySelector("#tree svg");
+        if (!svgOriginal) return null;
+        let svgClone = svgOriginal.cloneNode(true);
 
-        // Cerrar modal
-        bootstrap.Modal.getInstance(document.getElementById('modalExportacion')).hide();
+        let isMono = document.getElementById('chkMonoMode').checked;
+        let isHideIcons = document.getElementById('chkHideIcons').checked;
 
-        if (formato === 'svg') {
-            // Extraer el código SVG real incrustado en el DOM
-            let svgElement = contenedor.querySelector('svg');
-            if(!svgElement) return alert('No se pudo generar el vector.');
-            
-            let svgData = new XMLSerializer().serializeToString(svgElement);
-            let blob = new Blob([svgData], {type: "image/svg+xml;charset=utf-8"});
+        // 1. Ocultar avatares
+        if (isHideIcons) {
+            svgClone.querySelectorAll('image').forEach(img => {
+                img.setAttribute('display', 'none');
+                img.style.display = 'none';
+            });
+        }
+
+        // 2. Aplicar blanco y negro en atributos reales
+        if (isMono) {
+            svgClone.querySelectorAll('[data-n-id] rect, .node rect, rect').forEach(rect => {
+                rect.setAttribute('fill', '#ffffff');
+                rect.setAttribute('stroke', '#000000');
+                rect.setAttribute('stroke-width', '2');
+            });
+            svgClone.querySelectorAll('[data-n-id] text, .node text, text').forEach(text => {
+                text.setAttribute('fill', '#000000');
+            });
+            svgClone.querySelectorAll('path.link, path').forEach(path => {
+                path.setAttribute('stroke', '#000000');
+                path.setAttribute('stroke-width', '2');
+            });
+        }
+
+        return svgClone;
+    }
+
+    // PROCESADOR A CANVAS
+    function generarCanvasOrganigrama(callback) {
+        chart.fit();
+        setTimeout(() => {
+            let svgClone = obtenerSvgConFiltros();
+            if (!svgClone) return alert("Error al procesar el organigrama.");
+
+            let svgData = new XMLSerializer().serializeToString(svgClone);
+            if (!svgData.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
+                svgData = svgData.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+            }
+
+            let canvas = document.createElement("canvas");
+            let ctx = canvas.getContext("2d");
+            let img = new Image();
+
+            let svgOrig = document.querySelector("#tree svg");
+            let width = svgOrig.clientWidth || 1600;
+            let height = svgOrig.clientHeight || 1000;
+
+            canvas.width = width * 2;
+            canvas.height = height * 2;
+            ctx.scale(2, 2);
+
+            let blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
             let url = URL.createObjectURL(blob);
-            let a = document.createElement('a');
+
+            img.onload = function () {
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(0, 0, width, height);
+                ctx.drawImage(img, 0, 0, width, height);
+                URL.revokeObjectURL(url);
+                callback(canvas);
+            };
+            img.onerror = function() {
+                URL.revokeObjectURL(url);
+                alert("Error al convertir el organigrama en imagen.");
+            };
+            img.src = url;
+        }, 300);
+    }
+
+    // 1. Exportar SVG con filtros aplicados
+    function exportarSVG() {
+        bootstrap.Modal.getInstance(document.getElementById('modalExportacion'))?.hide();
+        chart.fit();
+        setTimeout(() => {
+            let svgClone = obtenerSvgConFiltros();
+            if (!svgClone) return alert("Error capturando el vector.");
+            let source = new XMLSerializer().serializeToString(svgClone);
+            if (!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
+                source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+            }
+            let blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
+            let url = URL.createObjectURL(blob);
+            let a = document.createElement("a");
             a.href = url;
-            a.download = filename + ".svg";
+            a.download = "Organigrama_Luis_Urdaneta.svg";
             a.click();
             URL.revokeObjectURL(url);
-        } 
-        else if (formato === 'png') {
-            if(typeof html2canvas === 'undefined') return alert("Librería html2canvas no detectada.");
+        }, 300);
+    }
+
+    // 2. Exportar PNG directo (con Monocromo y Sin Iconos)
+    function exportarPNG() {
+        bootstrap.Modal.getInstance(document.getElementById('modalExportacion'))?.hide();
+        generarCanvasOrganigrama(function (canvas) {
+            let a = document.createElement("a");
+            a.download = "Organigrama_Luis_Urdaneta.png";
+            a.href = canvas.toDataURL("image/png");
+            a.click();
+        });
+    }
+
+    // 3. Imprimir / Guardar como PDF oficial (Sin abrir pestañas raras)
+    function exportarPDF() {
+        bootstrap.Modal.getInstance(document.getElementById('modalExportacion'))?.hide();
+        generarCanvasOrganigrama(function (canvas) {
+            let imgData = canvas.toDataURL("image/png");
+            let printContainer = document.getElementById('print-container');
+            if (!printContainer) {
+                printContainer = document.createElement('div');
+                printContainer.id = 'print-container';
+                document.body.appendChild(printContainer);
+            }
+            printContainer.innerHTML = `<img src="${imgData}" style="max-width: 100%; max-height: 95vh; object-fit: contain;">`;
             
-            // Reajustar vista temporalmente para que capture todo
-            chart.fit();
             setTimeout(() => {
-                html2canvas(contenedor, { backgroundColor: '#ffffff', scale: 2 }).then(canvas => {
-                    let a = document.createElement('a');
-                    a.href = canvas.toDataURL("image/png");
-                    a.download = filename + ".png";
-                    a.click();
-                });
-            }, 500); // Esperar que la animación del fit termine
-        } 
-        else if (formato === 'pdf') {
-            if(typeof html2canvas === 'undefined') return alert("Librería html2canvas no detectada.");
-            
-            chart.fit();
-            setTimeout(() => {
-                html2canvas(contenedor, { backgroundColor: '#ffffff', scale: 2 }).then(canvas => {
-                    let imgData = canvas.toDataURL("image/jpeg", 1.0);
-                    let pdfWindow = window.open("");
-                    pdfWindow.document.write(`
-                        <html><head><title>${filename}</title>
-                        <style>
-                            @page { size: landscape; margin: 0; }
-                            body { margin: 0; display:flex; justify-content:center; align-items:center; height:100vh; background:white; }
-                            img { max-width: 100%; max-height: 100vh; object-fit: contain; }
-                        </style>
-                        </head><body>
-                        <img src="${imgData}">
-                        <script>
-                            window.onload = function() { 
-                                setTimeout(() => { window.print(); window.close(); }, 500);
-                            };
-                        <\/script>
-                        </body></html>
-                    `);
-                    pdfWindow.document.close();
-                });
-            }, 500);
-        }
+                window.print();
+            }, 300);
+        });
     }
 
     // ==========================================
-    // RESTO DE LAS FUNCIONES DEL ORGANIGRAMA
+    // RESTO DE FUNCIONES DEL CRUD
     // ==========================================
-
     chart.editUI.on('show', function (sender, nodeId) {
         let nodeData = chart.get(nodeId);
         document.getElementById('opcionesNodeId').value = nodeId;
@@ -560,13 +586,11 @@ include '../Includes/sidebar.php';
                 document.getElementById('detCorreo').innerText = node.correo;
                 document.getElementById('detIngreso').innerText = node.ingreso;
                 document.getElementById('detEstado').innerText = node.estado;
-                
                 document.getElementById('detCivil').innerText = node.estado_civil || 'S/R';
                 document.getElementById('detAcademico').innerText = node.nivel_academico || 'S/R';
                 document.getElementById('detDir').innerText = node.direccion || 'S/R';
                 document.getElementById('detSangre').innerText = node.tipo_sangre || 'S/R';
                 document.getElementById('detBanco').innerText = node.banco || 'S/R';
-                
                 new bootstrap.Modal(document.getElementById('modalVerDetalles')).show();
             } 
             else if (accion === 'editar') {
@@ -608,9 +632,7 @@ include '../Includes/sidebar.php';
             let n = chart.nodes[id];
             if (n && n.id) {
                 let nodeObj = chart.get(n.id);
-                if (nodeObj) {
-                    selectJefe.add(new Option(nodeObj.name + ' (' + nodeObj.title + ')', nodeObj.id));
-                }
+                if (nodeObj) selectJefe.add(new Option(nodeObj.name + ' (' + nodeObj.title + ')', nodeObj.id));
             }
         }
         document.getElementById('selectEmpleado').value = ""; 
@@ -628,8 +650,7 @@ include '../Includes/sidebar.php';
         let empData = todosEmpleados.find(e => e.id == empId);
         if(empData) {
             let iniciales = (empData.nombres.charAt(0) + empData.apellidos.charAt(0)).toUpperCase();
-            let color = '0d6efd';
-            let textoColor = 'ffffff';
+            let color = '0d6efd'; let textoColor = 'ffffff';
             if (empData.tipo_personal_id == 2) color = '198754';
             if (empData.tipo_personal_id == 3) { color = 'ffc107'; textoColor = '000000'; }
             let svgAvatar = `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23${color}'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%23${textoColor}' font-size='40' font-family='Arial' font-weight='bold'>${iniciales}</text></svg>`;
@@ -666,7 +687,7 @@ include '../Includes/sidebar.php';
     }
 
     function vaciarArbol() {
-        if(confirm('¿Seguro que desea limpiar todo el esquema visual? (Recuerde hacer clic en Guardar Cambios para sincronizar).')) {
+        if(confirm('¿Seguro que desea limpiar todo el esquema visual? (Recuerde guardar para sincronizar).')) {
             chart.load([]); 
             marcarComoModificado();
         }
@@ -679,19 +700,12 @@ include '../Includes/sidebar.php';
 
         try {
             let nodosExtraidos = [];
-            
             for (let id in chart.nodes) {
                 let n = chart.nodes[id];
                 if (n && n.id !== undefined && n.id !== null) {
                     let empId = parseInt(n.id);
                     let jefeId = (n.pid !== undefined && n.pid !== null && n.pid !== "" && n.pid !== 0) ? parseInt(n.pid) : null;
-                    
-                    if (!isNaN(empId)) {
-                        nodosExtraidos.push({
-                            id: empId,
-                            pid: (!isNaN(jefeId) && jefeId !== empId) ? jefeId : null
-                        });
-                    }
+                    if (!isNaN(empId)) nodosExtraidos.push({ id: empId, pid: (!isNaN(jefeId) && jefeId !== empId) ? jefeId : null });
                 }
             }
 
@@ -708,46 +722,12 @@ include '../Includes/sidebar.php';
                 btn.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i> ¡Guardar Cambios!';
             }
         } catch (error) {
-            console.error(error);
             alert("Error de conexión al guardar los datos.");
             btn.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i> ¡Guardar Cambios!';
         } finally {
             btn.disabled = false;
         }
     }
-
-    document.querySelectorAll('.modal-header').forEach(header => {
-        let isDragging = false;
-        let startX, startY, currentX, currentY;
-        let modalContent = header.closest('.modal-content');
-        let xOffset = 0, yOffset = 0;
-
-        header.addEventListener('mousedown', (e) => {
-            isDragging = true;
-            startX = e.clientX - xOffset;
-            startY = e.clientY - yOffset;
-            modalContent.style.transition = 'none';
-        });
-
-        document.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-            currentX = e.clientX - startX;
-            currentY = e.clientY - startY;
-            xOffset = currentX;
-            yOffset = currentY;
-            modalContent.style.transform = `translate(${currentX}px, ${currentY}px)`;
-        });
-
-        document.addEventListener('mouseup', () => { isDragging = false; });
-        
-        let modalElement = header.closest('.modal');
-        if(modalElement) {
-            modalElement.addEventListener('hidden.bs.modal', () => {
-                xOffset = 0; yOffset = 0;
-                modalContent.style.transform = 'translate(0px, 0px)';
-            });
-        }
-    });
 </script>
 
 <?php include '../Includes/footer.php'; ?>
