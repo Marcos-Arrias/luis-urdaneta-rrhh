@@ -337,17 +337,7 @@ include '../Includes/sidebar.php';
                         </div>
                     </div>
 
-                    <!-- 4. POWERPOINT -->
-                    <div class="col-md-6 col-lg-3">
-                        <div class="card text-center p-3 h-100 shadow-sm" style="border-color: #d24726 !important;">
-                            <i class="bi bi-file-earmark-slides-fill fs-1 mb-2" style="color: #d24726;"></i>
-                            <h6 class="fw-bold mb-1">PowerPoint (.PPT)</h6>
-                            <p class="small text-muted mb-3" style="font-size: 0.75rem;">Diapositivas listas para asambleas escolares y consejos docentes.</p>
-                            <button onclick="descargarReporte('pptx')" class="btn btn-sm w-100 mt-auto text-white" style="background:#d24726;"><i class="bi bi-download"></i> Diapositivas</button>
-                        </div>
-                    </div>
-
-                    <!-- 5. IMAGEN JPG -->
+                    <!-- 4. IMAGEN JPG -->
                     <div class="col-md-6 col-lg-3">
                         <div class="card text-center p-3 h-100 border-info shadow-sm">
                             <i class="bi bi-file-earmark-image-fill text-info fs-1 mb-2"></i>
@@ -357,7 +347,7 @@ include '../Includes/sidebar.php';
                         </div>
                     </div>
 
-                    <!-- 6. CSV -->
+                    <!-- 5. CSV -->
                     <div class="col-md-6 col-lg-3">
                         <div class="card text-center p-3 h-100 border-secondary shadow-sm">
                             <i class="bi bi-file-earmark-spreadsheet-fill text-secondary fs-1 mb-2"></i>
@@ -367,7 +357,7 @@ include '../Includes/sidebar.php';
                         </div>
                     </div>
 
-                    <!-- 7. JSON ESTRUCTURADO (AÑADIDO Y COMPLETO) -->
+                    <!-- 6. JSON ESTRUCTURADO (AÑADIDO Y COMPLETO) -->
                     <div class="col-md-6 col-lg-3">
                         <div class="card text-center p-3 h-100 border-warning shadow-sm">
                             <i class="bi bi-filetype-json text-warning fs-1 mb-2"></i>

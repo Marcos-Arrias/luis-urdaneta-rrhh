@@ -33,43 +33,9 @@ $personal = $stmt->fetchAll();
 registrarHistorial($pdo, 'Exportación', 'EXPORTAR', "Generó reporte en formato: " . strtoupper($formato));
 
 // ==========================================
-// 1. POWERPOINT (.PPT / PPTX)
+// 1. IMAGEN (JPG) CON HTML CANVAS
 // ==========================================
-if ($formato === 'pptx' || $formato === 'ppt') {
-    header("Content-Type: application/vnd.ms-powerpoint; charset=utf-8");
-    header("Content-Disposition: attachment; filename=Asamblea_Personal_" . date('Y-m-d') . ".ppt");
-    echo "\xEF\xBB\xBF";
-    ?>
-    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:p="urn:schemas-microsoft-com:office:powerpoint">
-    <head><meta charset="utf-8"></head>
-    <body style="font-family: Arial, sans-serif; background: #1e3c72; color: white;">
-        <div style="text-align: center; padding: 50px;">
-            <h1 style="font-size: 32px;">U.E.N LUIS URDANETA</h1>
-            <h2 style="font-size: 24px; color: #ffca28;">Nómina General y Consejo Docente</h2>
-            <p>Emisión: <?= date('d/m/Y') ?></p>
-        </div>
-        <div style="page-break-before: always; background: white; color: #333; padding: 30px;">
-            <h2 style="color: #1e3c72; border-bottom: 2px solid #1e3c72;">Resumen de Trabajadores</h2>
-            <table border="1" cellpadding="5" style="width: 100%; border-collapse: collapse;">
-                <tr style="background: #eee;"><th>Cédula</th><th>Nombre</th><th>Cargo Asignado</th><th>Turno</th></tr>
-                <?php foreach ($personal as $p): ?>
-                <tr>
-                    <td><?= $p['cedula'] ?></td>
-                    <td><?= htmlspecialchars($p['apellidos'] . ', ' . $p['nombres']) ?></td>
-                    <td><?= htmlspecialchars($p['cargo']) ?> (<?= $p['tipo'] ?>)</td>
-                    <td><?= $p['turno'] ?? 'Mañana' ?></td>
-                </tr>
-                <?php endforeach; ?>
-            </table>
-        </div>
-    </body></html>
-    <?php exit;
-}
-
-// ==========================================
-// 2. IMAGEN (JPG) CON HTML CANVAS
-// ==========================================
-elseif ($formato === 'jpg') { ?>
+if ($formato === 'jpg') { ?>
     <!DOCTYPE html>
     <html lang="es">
     <head>
@@ -123,7 +89,7 @@ elseif ($formato === 'jpg') { ?>
 }
 
 // ==========================================
-// 3. EXCEL (.XLS)
+// 2. EXCEL (.XLS)
 // ==========================================
 elseif ($formato === 'excel') {
     header("Content-Type: application/vnd.ms-excel; charset=utf-8");
@@ -156,7 +122,7 @@ elseif ($formato === 'excel') {
 }
 
 // ==========================================
-// 4. CSV PLANO
+// 3. CSV PLANO
 // ==========================================
 elseif ($formato === 'csv') {
     header("Content-Type: text/csv; charset=utf-8");
@@ -176,7 +142,7 @@ elseif ($formato === 'csv') {
 }
 
 // ==========================================
-// 5. WORD (.DOC)
+// 4. WORD (.DOC)
 // ==========================================
 elseif ($formato === 'word') {
     header("Content-Type: application/vnd.ms-word; charset=utf-8");
@@ -197,7 +163,7 @@ elseif ($formato === 'word') {
 }
 
 // ==========================================
-// 6. PDF OFICIAL
+// 5. PDF OFICIAL
 // ==========================================
 elseif ($formato === 'pdf') { ?>
     <!DOCTYPE html>
@@ -242,7 +208,7 @@ elseif ($formato === 'pdf') { ?>
 }
 
 // ==========================================
-// JSON ESTRUCTURADO Y COMPLETO PARA RESPALDO
+// 6. JSON ESTRUCTURADO Y COMPLETO PARA RESPALDO
 // ==========================================
 elseif ($formato === 'json') {
     header('Content-Type: application/json; charset=utf-8');
