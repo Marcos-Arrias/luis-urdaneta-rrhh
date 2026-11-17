@@ -261,4 +261,76 @@ function formatearTelefono($telefono) {
     $numeroLimpio = preg_replace('/[^0-9]/', '', $tel);
     return '<a href="https://wa.me/' . $numeroLimpio . '" target="_blank" class="text-decoration-none text-body fw-medium"><span class="me-1 fs-5">' . $bandera . '</span>' . htmlspecialchars($tel) . '</a>';
 }
+
+// =========================================================================
+// MOTOR DE EVALUACIÓN ReBAC (RELATIONSHIP-BASED ACCESS CONTROL)
+// =========================================================================
+function tienePermisoReBAC($pdo, $usuario_id, $nombre_recurso, $accion = 'leer', $objeto_id = 0) {
+    if (empty($usuario_id)) return false;
+
+    $colMap = [
+        'crear'    => 'puede_crear',
+        'leer'     => 'puede_leer',
+        'editar'   => 'puede_editar',
+        'eliminar' => 'puede_eliminar'
+    ];
+    $columna = $colMap[strtolower($accion)] ?? 'puede_leer';
+
+    try {
+        // 1. Verificar tupla directa o comodín global (objeto_id = 0) en el Grafo ReBAC
+        $sql = "
+            SELECT MAX(p.$columna)
+            FROM rebac_tuplas_grafo g
+            JOIN rebac_recursos r ON g.recurso_id = r.id
+            JOIN rebac_politicas_permisos p ON g.relacion_id = p.relacion_id AND g.recurso_id = p.recurso_id
+            WHERE g.usuario_id = ?
+              AND r.nombre_recurso = ?
+              AND (g.objeto_id = ? OR g.objeto_id = 0)
+        ";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$usuario_id, $nombre_recurso, $objeto_id]);
+        if ((int)$stmt->fetchColumn() === 1) {
+            return true;
+        }
+
+        // 2. Evaluación dinámica por grafo jerárquico (Si es jefe directo en el organigrama)
+        if ($objeto_id > 0 && in_array($nombre_recurso, ['asistencias', 'expediente_personal'])) {
+            $sqlOrg = "
+                SELECT p.$columna
+                FROM usuarios_sistema u
+                JOIN organigrama_jerarquia oj ON oj.jefe_id = u.personal_id
+                JOIN rebac_tipos_relacion tr ON tr.clave_relacion = 'supervisor_directo'
+                JOIN rebac_recursos rec ON rec.nombre_recurso = ?
+                JOIN rebac_politicas_permisos p ON p.relacion_id = tr.id AND p.recurso_id = rec.id
+                WHERE u.id = ? AND oj.personal_id = ?
+            ";
+            $stmtOrg = $pdo->prepare($sqlOrg);
+            $stmtOrg->execute([$nombre_recurso, $usuario_id, $objeto_id]);
+            if ((int)$stmtOrg->fetchColumn() === 1) {
+                return true;
+            }
+        }
+    } catch (PDOException $e) {
+        return false;
+    }
+
+    return false;
+}
+
+// Helper rápido para obtener el Rol y las Relaciones ReBAC del usuario actual
+function obtenerPerfilSeguridad($pdo, $usuario_id) {
+    $stmt = $pdo->prepare("
+        SELECT u.username, r.nombre as rol_nombre, r.nivel_acceso,
+               GROUP_CONCAT(DISTINCT CONCAT(tr.clave_relacion, ' → ', rec.nombre_recurso) SEPARATOR ' | ') as relaciones_rebac
+        FROM usuarios_sistema u
+        LEFT JOIN cat_roles_sistema r ON u.rol_id = r.id
+        LEFT JOIN rebac_tuplas_grafo g ON u.id = g.usuario_id
+        LEFT JOIN rebac_tipos_relacion tr ON g.relacion_id = tr.id
+        LEFT JOIN rebac_recursos rec ON g.recurso_id = rec.id
+        WHERE u.id = ?
+        GROUP BY u.id
+    ");
+    $stmt->execute([$usuario_id]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
 ?>
