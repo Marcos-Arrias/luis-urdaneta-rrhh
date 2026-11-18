@@ -53,14 +53,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->beginTransaction();
 
         // -------------------------------------------
-        // A. ACCIONES MASIVAS (MULTIPLES SUJETOS)
+        // A. ACCIONES MASIVAS (MÚLTIPLES SUJETOS)
         // -------------------------------------------
         if ($accion === 'bulk_delete' && !empty($_POST['bulk_ids'])) {
             if (!tienePermisoReBAC($pdo, $usuario_actual_id, 'expediente_personal', 'eliminar')) die("Sin permiso ReBAC para eliminar.");
             $ids = array_map('intval', explode(',', $_POST['bulk_ids']));
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
             
-            // Desvincular documentos (el archivo permanece seguro e independiente en el repositorio)
             $pdo->prepare("DELETE FROM documentos_enlaces WHERE tabla_destino = 'personal' AND registro_id IN ($placeholders)")->execute($ids);
             $pdo->prepare("DELETE FROM personal WHERE id IN ($placeholders)")->execute($ids);
             registrarHistorial($pdo, 'Personal', 'ELIMINAR', "Eliminación masiva de " . count($ids) . " registros.");
@@ -138,7 +137,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmtActuales->execute([$personal_id]);
             $actuales = $stmtActuales->fetchAll(PDO::FETCH_COLUMN);
 
-            // Quitar los que el usuario desmarcó (sin borrar el archivo del repositorio)
             $paraDesvincular = array_diff($actuales, $seleccionados);
             if (!empty($paraDesvincular)) {
                 $ph = implode(',', array_fill(0, count($paraDesvincular), '?'));
@@ -146,7 +144,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ->execute(array_merge([$personal_id], $paraDesvincular));
             }
 
-            // Agregar los nuevos marcados
             $paraVincular = array_diff($seleccionados, $actuales);
             if (!empty($paraVincular)) {
                 $stmtLink = $pdo->prepare("INSERT INTO documentos_enlaces (documento_id, tabla_destino, registro_id, notas) VALUES (?, 'personal', ?, 'Vinculado desde ficha de personal')");
@@ -172,19 +169,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $hash = hash_file('sha256', $tmpName);
                         $ext = strtolower(pathinfo($nombreOriginal, PATHINFO_EXTENSION));
 
-                        // Buscar ID del tipo en cat_tipos_documentos
                         $stmtT = $pdo->prepare("SELECT id FROM cat_tipos_documentos WHERE clave = ?");
                         $stmtT->execute([$tipo_clave]);
                         $tipoDocId = $stmtT->fetchColumn() ?: 7;
 
-                        // Calcular correlativo seguro
                         $stmtS = $pdo->prepare("SELECT COUNT(*) FROM documentos d JOIN documentos_enlaces de ON d.id = de.documento_id WHERE de.tabla_destino = 'personal' AND de.registro_id = ? AND d.tipo_documento_id = ?");
                         $stmtS->execute([$personal_id, $tipoDocId]);
                         $secuencia = intval($stmtS->fetchColumn()) + 1;
 
                         $nombre_codigo = sprintf("V%s_%d_%s_%02d.%s", $cedula_limpia, $personal_id, $tipo_clave, $secuencia, $ext);
                         
-                        // Evitar colisión si el archivo existió antes
                         $chkCod = $pdo->prepare("SELECT COUNT(*) FROM documentos WHERE codigo_archivo = ?");
                         $chkCod->execute([$nombre_codigo]);
                         if ($chkCod->fetchColumn() > 0) {
@@ -194,12 +188,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $rutaFinal = $directorio . $nombre_codigo;
 
                         if (move_uploaded_file($tmpName, $rutaFinal)) {
-                            // 1) Insertar en repositorio general 'documentos'
                             $pdo->prepare("INSERT INTO documentos (tipo_documento_id, codigo_archivo, nombre_original, ruta_archivo, mime_type, tamano_bytes, hash_verificacion) VALUES (?, ?, ?, ?, ?, ?, ?)")
                                 ->execute([$tipoDocId, $nombre_codigo, $nombreOriginal, $rutaFinal, $mime, $tamano, $hash]);
                             $nuevoDocId = $pdo->lastInsertId();
 
-                            // 2) Vincular con el trabajador en 'documentos_enlaces'
                             $pdo->prepare("INSERT INTO documentos_enlaces (documento_id, tabla_destino, registro_id, notas) VALUES (?, 'personal', ?, 'Subido desde ficha de personal')")
                                 ->execute([$nuevoDocId, $personal_id]);
 
@@ -228,7 +220,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ==========================================
-// 2. UI CONFIG & QUERIES (LEYENDO DEL REPOSITORIO UNIFICADO)
+// 2. UI CONFIG & QUERIES
 // ==========================================
 $tipo_id = isset($_GET['tipo']) ? intval($_GET['tipo']) : 1;
 $filtro_cargo = isset($_GET['cargo']) ? intval($_GET['cargo']) : null;
@@ -285,12 +277,12 @@ $lista_cargos = $pdo->prepare("SELECT id, nombre FROM cat_cargos_areas WHERE tip
 $lista_cargos->execute([$tipo_id]);
 $lista_cargos = $lista_cargos->fetchAll();
 
-// Cargar todos los documentos del repositorio para poder vincularlos desde el modal de Personal
+// Cargar documentos ordenados del más reciente al más antiguo
 $docsRepositorio = $pdo->query("
-    SELECT d.id, d.codigo_archivo, d.nombre_original, td.clave
+    SELECT d.id, d.codigo_archivo, d.nombre_original, d.fecha_subida, td.clave
     FROM documentos d
     JOIN cat_tipos_documentos td ON d.tipo_documento_id = td.id
-    ORDER BY d.fecha_subida DESC
+    ORDER BY d.fecha_subida DESC, d.id DESC
 ")->fetchAll();
 
 include '../Includes/header.php'; include '../Includes/sidebar.php';
@@ -304,8 +296,6 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
 @keyframes fadeIn { from { opacity: 0; transform: translateX(-15px); } to { opacity: 1; transform: translateX(0); } }
 .avatar-thumb { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid var(--bs-primary); transition: transform 0.2s; }
 .popover-hover:hover .avatar-thumb { transform: scale(1.1); }
-.badge-interactive { transition: all 0.2s ease; cursor: pointer; display: inline-flex; align-items: center; }
-.badge-interactive:hover { background-color: var(--bs-primary) !important; color: white !important; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
 
 th.sortable { cursor: pointer; user-select: none; position: relative; padding-right: 20px !important; }
 th.sortable:hover { background-color: rgba(0,0,0,0.05); }
@@ -325,6 +315,96 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
     transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 #bulk-toolbar.show { bottom: 30px; }
+
+/* ========================================================= */
+/* DISEÑO ERGONÓMICO: PANELES MINIMIZABLES IZQ / DER         */
+/* ========================================================= */
+.doc-split-container {
+    display: flex;
+    gap: 0.85rem;
+    align-items: stretch;
+    transition: all 0.25s ease;
+}
+.doc-panel {
+    flex: 1 1 0;
+    min-width: 0;
+    transition: all 0.25s ease;
+}
+.doc-panel.minimizado {
+    flex: 0 0 54px !important;
+    max-width: 54px !important;
+    overflow: hidden;
+    cursor: pointer;
+}
+.doc-panel.minimizado:hover {
+    filter: brightness(0.96);
+}
+.doc-panel.minimizado .panel-contenido-abierto {
+    display: none !important;
+}
+.doc-panel:not(.minimizado) .panel-contenido-minimizado {
+    display: none !important;
+}
+.panel-contenido-minimizado {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0.85rem 0.25rem;
+    height: 100%;
+    min-height: 155px;
+    user-select: none;
+}
+.texto-vertical {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+    font-weight: 700;
+    font-size: 0.78rem;
+    letter-spacing: 0.4px;
+    margin-top: 0.65rem;
+}
+@media (max-width: 991.98px) {
+    .doc-split-container { flex-direction: column; }
+    .doc-panel.minimizado {
+        flex: 0 0 auto !important;
+        max-width: 100% !important;
+    }
+    .panel-contenido-minimizado {
+        flex-direction: row;
+        justify-content: space-between;
+        min-height: auto;
+        padding: 0.65rem 1rem;
+    }
+    .texto-vertical {
+        writing-mode: horizontal-tb;
+        transform: none;
+        margin-top: 0;
+        margin-left: 0.5rem;
+    }
+}
+
+/* Zona cómoda de carga múltiple (Drag & Drop) */
+.dropzone-multiple {
+    border: 2px dashed rgba(255, 193, 7, 0.75);
+    border-radius: 12px;
+    padding: 1rem;
+    text-align: center;
+    background-color: rgba(255, 193, 7, 0.06);
+    transition: all 0.2s ease;
+}
+.dropzone-multiple.dragover {
+    background-color: rgba(255, 193, 7, 0.18);
+    border-color: #ffc107;
+    transform: scale(1.01);
+}
+.file-queue-thumb {
+    width: 36px;
+    height: 36px;
+    object-fit: cover;
+    border-radius: 8px;
+    flex-shrink: 0;
+}
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -517,7 +597,7 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
   </div>
 </div>
 
-<!-- MODAL DE REGISTRO CON CARGA MÚLTIPLE + VINCULACIÓN AL REPOSITORIO -->
+<!-- MODAL DE REGISTRO CON PANELES MINIMIZABLES Y SELECCIÓN MÚLTIPLE CÓMODA -->
 <div class="modal fade" id="modalRegistro" tabindex="-1">
     <div class="modal-dialog modal-xl">
         <div class="modal-content border-0">
@@ -525,7 +605,7 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
                 <h5 class="modal-title"><i class="bi bi-person-vcard me-2"></i>Gestión de Expediente MPPE</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <form action="" method="POST" enctype="multipart/form-data">
+            <form action="" method="POST" enctype="multipart/form-data" id="formRegistroPersonal">
                 <div class="modal-body bg-body-tertiary">
                     <input type="hidden" name="accion" id="accion">
                     <input type="hidden" name="id" id="registro_id">
@@ -563,72 +643,105 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
                         </div>
                     </div>
 
-                    <!-- SECCIÓN UNIFICADA: SUBIR NUEVOS ARCHIVOS O VINCULAR DEL REPOSITORIO -->
-                    <div class="row g-3 mb-3">
-                        <!-- Columna Izquierda: Subir nuevos -->
-                        <div class="col-lg-7">
-                            <div class="card border-0 shadow-sm h-100 border-start border-4 border-warning">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-center mb-2">
-                                        <h6 class="text-warning fw-bold mb-0"><i class="bi bi-cloud-arrow-up-fill me-1"></i> Subir Nuevos Archivos (Se envían a Archivos)</h6>
-                                        <button type="button" class="btn btn-outline-warning btn-sm fw-bold" onclick="agregarFilaArchivo()">
-                                            <i class="bi bi-plus-lg"></i> Otro
-                                        </button>
-                                    </div>
-                                    <p class="small text-muted mb-2">Todo archivo subido aquí se sella con SHA-256 y queda en el Repositorio Central.</p>
+                    <!-- ========================================================= -->
+                    <!-- SECCIÓN DE ARCHIVOS ERGONÓMICA (MINIMIZABLE IZQ / DER)    -->
+                    <!-- ========================================================= -->
+                    <div class="doc-split-container mb-3">
+                        
+                        <!-- PANEL IZQUIERDO (AMARILLO): SUBIDA MÚLTIPLE + CLASIFICACIÓN -->
+                        <div class="card border-0 shadow-sm border-start border-4 border-warning doc-panel" id="panelSubirDocs">
+                            
+                            <!-- Vista Minimizada (Izquierda) -->
+                            <div class="panel-contenido-minimizado bg-warning-subtle text-warning-emphasis rounded-end" onclick="alternarPanelDoc('panelSubirDocs', false)" title="Expandir panel de subida">
+                                <i class="bi bi-chevron-bar-right fs-5"></i>
+                                <span class="badge bg-warning text-dark mt-1" id="badgeColaSubida">0</span>
+                                <span class="texto-vertical"><i class="bi bi-cloud-arrow-up-fill me-1"></i> Subir Nuevos</span>
+                            </div>
 
-                                    <div id="contenedorArchivos">
-                                        <div class="row g-2 align-items-center mb-2 fila-archivo">
-                                            <div class="col-md-5">
-                                                <select name="tipo_archivo_clave[]" class="form-select form-select-sm">
-                                                    <option value="FOT">FOT - Foto Tipo Carnet</option>
-                                                    <option value="CED">CED - Cédula Escaneada</option>
-                                                    <option value="TIT">TIT - Título / Fondo Negro</option>
-                                                    <option value="MED">MED - Certificado Médico</option>
-                                                    <option value="SOP">SOP - Constancia / Reposo</option>
-                                                    <option value="OTR">OTR - Otro Documento</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <input type="file" name="archivo_expediente[]" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp,.doc,.docx">
-                                            </div>
-                                            <div class="col-md-1 text-center">
-                                                <button type="button" class="btn btn-sm text-danger border-0 p-0" onclick="eliminarFilaArchivo(this)" title="Quitar archivo">
-                                                    <i class="bi bi-x-circle-fill fs-5"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
+                            <!-- Vista Abierta -->
+                            <div class="card-body panel-contenido-abierto">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="text-warning-emphasis fw-bold mb-0">
+                                        <i class="bi bi-cloud-arrow-up-fill me-1 text-warning"></i> Subir Nuevos Archivos (Se envían a Archivos)
+                                    </h6>
+                                    <button type="button" class="btn btn-sm btn-light border text-muted rounded-pill px-2 py-0" onclick="alternarPanelDoc('panelSubirDocs', true)" title="Minimizar a la izquierda">
+                                        <i class="bi bi-chevron-bar-left"></i> Minimizar
+                                    </button>
                                 </div>
+
+                                <!-- Input múltiple real oculto manejado por DataTransfer -->
+                                <input type="file" name="archivo_expediente[]" id="inputArchivosReales" multiple accept=".jpg,.jpeg,.png,.pdf,.webp,.doc,.docx" class="d-none">
+
+                                <!-- Zona Drag & Drop cómoda -->
+                                <div class="dropzone-multiple mb-2" id="dropzoneArchivos">
+                                    <i class="bi bi-files text-warning fs-3 d-block mb-1"></i>
+                                    <div class="small text-muted mb-2">Arrastra varios documentos aquí o haz clic para seleccionarlos todos de una vez</div>
+                                    <label for="inputArchivosReales" class="btn btn-warning btn-sm fw-bold rounded-pill px-4 shadow-sm" style="cursor: pointer;">
+                                        <i class="bi bi-folder2-open me-1"></i> Elegir Múltiples Archivos...
+                                    </label>
+                                </div>
+
+                                <!-- Cola dinámica donde se indica qué es cada archivo -->
+                                <div id="listaArchivosSeleccionados" class="d-flex flex-column gap-2" style="max-height: 210px; overflow-y: auto;"></div>
                             </div>
                         </div>
 
-                        <!-- Columna Derecha: Vincular existentes del repositorio -->
-                        <div class="col-lg-5">
-                            <div class="card border-0 shadow-sm h-100 border-start border-4 border-info">
-                                <div class="card-body">
-                                    <h6 class="text-info fw-bold mb-2"><i class="bi bi-link-45deg me-1"></i> Vincular desde Archivos Existentes</h6>
-                                    <input type="text" id="buscarDocVincular" class="form-control form-control-sm mb-2" placeholder="🔍 Filtrar archivos del repositorio...">
-                                    
-                                    <div class="border rounded p-2 bg-body" style="max-height: 120px; overflow-y: auto;" id="listaCheckboxesDocs">
-                                        <?php if (count($docsRepositorio) > 0): ?>
-                                            <?php foreach ($docsRepositorio as $dr): ?>
-                                                <div class="form-check small item-doc-vincular">
-                                                    <input class="form-check-input chk-vincular-doc" type="checkbox" name="vincular_documentos_existentes[]" value="<?= $dr['id'] ?>" id="vinc_doc_<?= $dr['id'] ?>">
-                                                    <label class="form-check-label text-truncate d-block" for="vinc_doc_<?= $dr['id'] ?>" style="cursor:pointer;">
+                        <!-- PANEL DERECHO (AZUL): VINCULAR EXISTENTES (TOP 5 MÁS RECIENTES) -->
+                        <div class="card border-0 shadow-sm border-start border-4 border-info doc-panel minimizado" id="panelVincularDocs">
+                            
+                            <!-- Vista Minimizada (Derecha - Por defecto al abrir) -->
+                            <div class="panel-contenido-minimizado bg-info-subtle text-info-emphasis rounded-end" onclick="alternarPanelDoc('panelVincularDocs', false)" title="Expandir para vincular archivos existentes">
+                                <i class="bi bi-chevron-bar-left fs-5"></i>
+                                <span class="badge bg-info text-dark mt-1" id="badgeVinculadosCount">0</span>
+                                <span class="texto-vertical"><i class="bi bi-link-45deg me-1"></i> Vincular Existentes</span>
+                            </div>
+
+                            <!-- Vista Abierta -->
+                            <div class="card-body panel-contenido-abierto">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="text-info-emphasis fw-bold mb-0">
+                                        <i class="bi bi-link-45deg me-1 text-info"></i> Vincular desde Archivos Existentes
+                                    </h6>
+                                    <button type="button" class="btn btn-sm btn-light border text-muted rounded-pill px-2 py-0" onclick="alternarPanelDoc('panelVincularDocs', true)" title="Minimizar a la derecha">
+                                        Minimizar <i class="bi bi-chevron-bar-right"></i>
+                                    </button>
+                                </div>
+
+                                <div class="d-flex gap-2 mb-2">
+                                    <input type="text" id="buscarDocVincular" class="form-control form-control-sm" placeholder="🔍 Buscar entre todos los archivos...">
+                                    <button type="button" class="btn btn-sm btn-outline-info text-nowrap fw-bold" id="btnToggleTodosDocs" onclick="toggleMostrarTodosDocs()">
+                                        Ver todos (<?= count($docsRepositorio) ?>)
+                                    </button>
+                                </div>
+
+                                <div class="small text-muted mb-1 d-flex justify-content-between">
+                                    <span id="etiquetaFiltroRecientes"><i class="bi bi-clock-history me-1"></i>Mostrando los 5 más recientes</span>
+                                </div>
+                                
+                                <div class="border rounded p-2 bg-body" style="max-height: 175px; overflow-y: auto;" id="listaCheckboxesDocs">
+                                    <?php if (count($docsRepositorio) > 0): ?>
+                                        <?php foreach ($docsRepositorio as $idx => $dr): 
+                                            $esReciente = ($idx < 5) ? '1' : '0';
+                                        ?>
+                                            <div class="form-check small item-doc-vincular py-1 border-bottom border-light-subtle <?= $esReciente === '0' ? 'd-none' : '' ?>" data-reciente="<?= $esReciente ?>">
+                                                <input class="form-check-input chk-vincular-doc" type="checkbox" name="vincular_documentos_existentes[]" value="<?= $dr['id'] ?>" id="vinc_doc_<?= $dr['id'] ?>" onchange="actualizarContadorVinculados()">
+                                                <label class="form-check-label d-flex justify-content-between align-items-center" for="vinc_doc_<?= $dr['id'] ?>" style="cursor:pointer;">
+                                                    <span class="text-truncate me-2">
                                                         <span class="badge bg-secondary-subtle text-body border me-1"><?= $dr['clave'] ?></span>
                                                         <strong><?= htmlspecialchars($dr['nombre_original']) ?></strong>
                                                         <small class="text-muted">(<?= htmlspecialchars($dr['codigo_archivo']) ?>)</small>
-                                                    </label>
-                                                </div>
-                                            <?php endforeach; ?>
-                                        <?php else: ?>
-                                            <span class="text-muted small d-block text-center py-3">No hay documentos en el repositorio aún.</span>
-                                        <?php endif; ?>
-                                    </div>
+                                                    </span>
+                                                    <small class="text-muted text-nowrap" style="font-size: 0.7rem;"><?= date('d/m/y', strtotime($dr['fecha_subida'])) ?></small>
+                                                </label>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <span class="text-muted small d-block text-center py-3">No hay documentos en el repositorio aún.</span>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
+
                     </div>
 
                     <button class="btn btn-outline-primary w-100 fw-bold border-2 mb-3" type="button" data-bs-toggle="collapse" data-bs-target="#datosMiscelaneos">
@@ -734,76 +847,197 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
 </div>
 
 <script>
-// Buscador en vivo dentro del cuadro de documentos a vincular
-document.getElementById('buscarDocVincular')?.addEventListener('input', function(e) {
-    let q = e.target.value.toLowerCase();
-    document.querySelectorAll('.item-doc-vincular').forEach(item => {
-        item.style.display = item.innerText.toLowerCase().includes(q) ? '' : 'none';
-    });
+// =========================================================================
+// 1. MINIMIZAR / EXPANDIR PANELES A LA IZQUIERDA O DERECHA
+// =========================================================================
+function alternarPanelDoc(panelId, minimizar) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+    if (minimizar) panel.classList.add('minimizado');
+    else panel.classList.remove('minimizado');
+}
+
+// =========================================================================
+// 2. SELECCIÓN MÚLTIPLE DE ARCHIVOS + ASIGNACIÓN DE TIPO POR ARCHIVO
+// =========================================================================
+let dtArchivos = new DataTransfer();
+let tiposSeleccionadosMap = new Map();
+const inputArchivosReales = document.getElementById('inputArchivosReales');
+const dropzoneArchivos = document.getElementById('dropzoneArchivos');
+
+function claveUnicaArchivo(file) {
+    return `${file.name}__${file.size}__${file.lastModified}`;
+}
+
+function agregarFilesACola(fileList) {
+    for (let i = 0; i < fileList.length; i++) {
+        let f = fileList[i];
+        let key = claveUnicaArchivo(f);
+        // Evitar duplicados exactos si vuelven a arrastrar el mismo archivo
+        let yaExiste = Array.from(dtArchivos.files).some(ex => claveUnicaArchivo(ex) === key);
+        if (!yaExiste) {
+            dtArchivos.items.add(f);
+        }
+    }
+    inputArchivosReales.files = dtArchivos.files;
+    renderizarColaArchivos();
+}
+
+inputArchivosReales.addEventListener('change', function() {
+    if (this.files.length > 0) {
+        agregarFilesACola(this.files);
+    }
 });
 
-function agregarFilaArchivo() {
-    let contenedor = document.getElementById('contenedorArchivos');
-    let nuevaFila = document.createElement('div');
-    nuevaFila.className = 'row g-2 align-items-center mb-2 fila-archivo';
-    nuevaFila.innerHTML = `
-        <div class="col-md-5">
-            <select name="tipo_archivo_clave[]" class="form-select form-select-sm">
-                <option value="FOT">FOT - Foto Tipo Carnet</option>
-                <option value="CED">CED - Cédula Escaneada</option>
-                <option value="TIT">TIT - Título / Fondo Negro</option>
-                <option value="MED">MED - Certificado Médico</option>
-                <option value="SOP">SOP - Constancia / Reposo</option>
-                <option value="OTR">OTR - Otro Documento</option>
-            </select>
-        </div>
-        <div class="col-md-6">
-            <input type="file" name="archivo_expediente[]" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp,.doc,.docx">
-        </div>
-        <div class="col-md-1 text-center">
-            <button type="button" class="btn btn-sm text-danger border-0 p-0" onclick="eliminarFilaArchivo(this)" title="Quitar archivo">
-                <i class="bi bi-x-circle-fill fs-5"></i>
-            </button>
-        </div>
-    `;
-    contenedor.appendChild(nuevaFila);
+// Soporte Drag & Drop cómodo sobre la caja amarilla
+['dragenter', 'dragover'].forEach(ev => {
+    dropzoneArchivos.addEventListener(ev, (e) => {
+        e.preventDefault();
+        dropzoneArchivos.classList.add('dragover');
+    });
+});
+['dragleave', 'drop'].forEach(ev => {
+    dropzoneArchivos.addEventListener(ev, (e) => {
+        e.preventDefault();
+        dropzoneArchivos.classList.remove('dragover');
+    });
+});
+dropzoneArchivos.addEventListener('drop', (e) => {
+    if (e.dataTransfer.files.length > 0) {
+        agregarFilesACola(e.dataTransfer.files);
+    }
+});
+
+function guardarTipoArchivo(key, valor) {
+    tiposSeleccionadosMap.set(key, valor);
 }
 
-function eliminarFilaArchivo(btn) {
-    let filas = document.querySelectorAll('.fila-archivo');
-    if (filas.length > 1) btn.closest('.fila-archivo').remove();
-    else btn.closest('.fila-archivo').querySelector('input[type="file"]').value = '';
+function quitarArchivoDeCola(index) {
+    let nuevaDT = new DataTransfer();
+    let files = dtArchivos.files;
+    for (let i = 0; i < files.length; i++) {
+        if (i !== index) nuevaDT.items.add(files[i]);
+        else tiposSeleccionadosMap.delete(claveUnicaArchivo(files[i]));
+    }
+    dtArchivos = nuevaDT;
+    inputArchivosReales.files = dtArchivos.files;
+    renderizarColaArchivos();
 }
 
-function resetearFilasArchivos() {
-    document.getElementById('contenedorArchivos').innerHTML = `
-        <div class="row g-2 align-items-center mb-2 fila-archivo">
-            <div class="col-md-5">
-                <select name="tipo_archivo_clave[]" class="form-select form-select-sm">
-                    <option value="FOT">FOT - Foto Tipo Carnet</option>
-                    <option value="CED">CED - Cédula Escaneada</option>
-                    <option value="TIT">TIT - Título / Fondo Negro</option>
-                    <option value="MED">MED - Certificado Médico</option>
-                    <option value="SOP">SOP - Constancia / Reposo</option>
-                    <option value="OTR">OTR - Otro Documento</option>
+function renderizarColaArchivos() {
+    const contenedor = document.getElementById('listaArchivosSeleccionados');
+    const badge = document.getElementById('badgeColaSubida');
+    contenedor.innerHTML = '';
+    badge.innerText = dtArchivos.files.length;
+
+    Array.from(dtArchivos.files).forEach((file, idx) => {
+        let key = claveUnicaArchivo(file);
+        let tipoPrevio = tiposSeleccionadosMap.get(key) || '';
+        let tamKB = (file.size / 1024).toFixed(1) + ' KB';
+
+        let thumbHTML = '<div class="file-queue-thumb bg-secondary-subtle text-secondary d-flex align-items-center justify-content-center border"><i class="bi bi-file-earmark-text-fill fs-5"></i></div>';
+        if (file.type.startsWith('image/')) {
+            let objUrl = URL.createObjectURL(file);
+            thumbHTML = `<img src="${objUrl}" class="file-queue-thumb border shadow-sm">`;
+        } else if (file.type === 'application/pdf') {
+            thumbHTML = '<div class="file-queue-thumb bg-danger-subtle text-danger d-flex align-items-center justify-content-center border"><i class="bi bi-file-earmark-pdf-fill fs-5"></i></div>';
+        }
+
+        let fila = document.createElement('div');
+        fila.className = 'd-flex flex-wrap flex-sm-nowrap align-items-center gap-2 p-2 rounded-3 bg-body border shadow-sm';
+        fila.innerHTML = `
+            ${thumbHTML}
+            <div class="flex-grow-1 text-truncate" style="min-width: 120px;">
+                <div class="small fw-bold text-truncate" title="${file.name}">${file.name}</div>
+                <small class="text-muted" style="font-size: 0.72rem;">${tamKB}</small>
+            </div>
+            <div style="min-width: 210px;">
+                <select name="tipo_archivo_clave[]" class="form-select form-select-sm border-warning fw-medium" required onchange="guardarTipoArchivo('${key.replace(/'/g, "\\'")}', this.value)">
+                    <option value="" disabled ${tipoPrevio === '' ? 'selected' : ''}>¿Qué tipo de documento es?...</option>
+                    <option value="FOT" ${tipoPrevio === 'FOT' ? 'selected' : ''}>FOT - Foto Tipo Carnet</option>
+                    <option value="CED" ${tipoPrevio === 'CED' ? 'selected' : ''}>CED - Cédula Escaneada</option>
+                    <option value="TIT" ${tipoPrevio === 'TIT' ? 'selected' : ''}>TIT - Título / Certificado</option>
+                    <option value="MED" ${tipoPrevio === 'MED' ? 'selected' : ''}>MED - Informe Médico</option>
+                    <option value="SOP" ${tipoPrevio === 'SOP' ? 'selected' : ''}>SOP - Justificación / Reposo</option>
+                    <option value="MEM" ${tipoPrevio === 'MEM' ? 'selected' : ''}>MEM - Memorándum / Acta</option>
+                    <option value="OTR" ${tipoPrevio === 'OTR' ? 'selected' : ''}>OTR - Otro Documento</option>
                 </select>
             </div>
-            <div class="col-md-6">
-                <input type="file" name="archivo_expediente[]" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp,.doc,.docx">
-            </div>
-            <div class="col-md-1 text-center">
-                <button type="button" class="btn btn-sm text-danger border-0 p-0" onclick="eliminarFilaArchivo(this)" title="Quitar archivo">
-                    <i class="bi bi-x-circle-fill fs-5"></i>
-                </button>
-            </div>
-        </div>
-    `;
+            <button type="button" class="btn btn-sm text-danger border-0 p-1" onclick="quitarArchivoDeCola(${idx})" title="Quitar archivo">
+                <i class="bi bi-x-circle-fill fs-5"></i>
+            </button>
+        `;
+        contenedor.appendChild(fila);
+    });
+}
+
+function resetearColaArchivos() {
+    dtArchivos = new DataTransfer();
+    tiposSeleccionadosMap.clear();
+    inputArchivosReales.files = dtArchivos.files;
+    renderizarColaArchivos();
+}
+
+// Si intentan guardar con el panel de subida minimizado y falta elegir el tipo de algún archivo, expandirlo automáticamente
+document.getElementById('formRegistroPersonal')?.addEventListener('submit', function(e) {
+    let selectsPendientes = document.querySelectorAll('#listaArchivosSeleccionados select[required]');
+    for (let s of selectsPendientes) {
+        if (!s.value) {
+            alternarPanelDoc('panelSubirDocs', false);
+            break;
+        }
+    }
+});
+
+// =========================================================================
+// 3. TOP 5 MÁS RECIENTES Y BUSCADOR DE VINCULACIÓN
+// =========================================================================
+let mostrandoTodosDocs = false;
+
+function actualizarVisibilidadDocs() {
+    const query = document.getElementById('buscarDocVincular').value.trim().toLowerCase();
+    const etiqueta = document.getElementById('etiquetaFiltroRecientes');
+    const items = document.querySelectorAll('.item-doc-vincular');
+
+    if (query !== '') {
+        etiqueta.innerHTML = `<i class="bi bi-search me-1"></i>Resultados para "${query}"`;
+        items.forEach(item => {
+            item.classList.toggle('d-none', !item.innerText.toLowerCase().includes(query));
+        });
+    } else if (mostrandoTodosDocs) {
+        etiqueta.innerHTML = `<i class="bi bi-list-ul me-1"></i>Mostrando todos los documentos`;
+        items.forEach(item => item.classList.remove('d-none'));
+    } else {
+        etiqueta.innerHTML = `<i class="bi bi-clock-history me-1"></i>Mostrando los 5 más recientes (y los vinculados)`;
+        items.forEach(item => {
+            let esReciente = item.getAttribute('data-reciente') === '1';
+            let estaMarcado = item.querySelector('.chk-vincular-doc')?.checked;
+            item.classList.toggle('d-none', !(esReciente || estaMarcado));
+        });
+    }
+}
+
+function toggleMostrarTodosDocs() {
+    mostrandoTodosDocs = !mostrandoTodosDocs;
+    const btn = document.getElementById('btnToggleTodosDocs');
+    btn.innerText = mostrandoTodosDocs ? 'Solo 5 recientes' : 'Ver todos (<?= count($docsRepositorio) ?>)';
+    actualizarVisibilidadDocs();
+}
+
+document.getElementById('buscarDocVincular')?.addEventListener('input', actualizarVisibilidadDocs);
+
+function actualizarContadorVinculados() {
+    let total = document.querySelectorAll('.chk-vincular-doc:checked').length;
+    document.getElementById('badgeVinculadosCount').innerText = total;
 }
 
 function limpiarCheckboxesDocumentos() {
+    mostrandoTodosDocs = false;
+    document.getElementById('btnToggleTodosDocs').innerText = 'Ver todos (<?= count($docsRepositorio) ?>)';
     document.getElementById('buscarDocVincular').value = '';
-    document.querySelectorAll('.item-doc-vincular').forEach(item => item.style.display = '');
     document.querySelectorAll('.chk-vincular-doc').forEach(cb => cb.checked = false);
+    actualizarContadorVinculados();
+    actualizarVisibilidadDocs();
 }
 
 function cargarCheckboxesDocumentos(btn) {
@@ -817,9 +1051,13 @@ function cargarCheckboxesDocumentos(btn) {
             });
         }
     } catch(e) {}
+    actualizarContadorVinculados();
+    actualizarVisibilidadDocs();
 }
 
-// Selección múltiple y acciones masivas
+// =========================================================================
+// 4. SELECCIÓN MÚLTIPLE EN TABLA Y ACCIONES MASIVAS
+// =========================================================================
 let selectedIds = new Set();
 function checkRow(checkbox) {
     let tr = checkbox.closest('tr');
@@ -888,23 +1126,29 @@ function drop(e) {
     });
 }
 
-// Envolver las funciones de script.js una vez que footer.php termine de cargar
+// =========================================================================
+// 5. ENVOLTORIO SEGURO DE script.js + AUTO-EDICIÓN DESDE ORGANIGRAMA
+// =========================================================================
 document.addEventListener("DOMContentLoaded", () => {
     const originalLimpiar = window.limpiarFormulario;
     window.limpiarFormulario = function() {
         if (typeof originalLimpiar === 'function') originalLimpiar();
-        resetearFilasArchivos();
+        resetearColaArchivos();
         limpiarCheckboxesDocumentos();
+        // Estado ergonómico inicial: Subir abierto, Vincular minimizado a la derecha
+        alternarPanelDoc('panelSubirDocs', false);
+        alternarPanelDoc('panelVincularDocs', true);
     };
 
     const originalEditar = window.editarRegistro;
     window.editarRegistro = function(btn) {
         if (typeof originalEditar === 'function') originalEditar(btn);
-        resetearFilasArchivos();
+        resetearColaArchivos();
         cargarCheckboxesDocumentos(btn);
+        alternarPanelDoc('panelSubirDocs', false);
+        alternarPanelDoc('panelVincularDocs', true);
     };
 
-    // Auto-edición desde el organigrama
     const urlParams = new URLSearchParams(window.location.search);
     const autoEditId = urlParams.get('auto_edit');
     if (autoEditId) {
