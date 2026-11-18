@@ -1,6 +1,46 @@
 <?php
 require_once '../PHP/connection.php';
 
+// Protección ReBAC sobre el módulo de personal
+exigirPermisoReBAC($pdo, 'expediente_personal', 'leer');
+$usuario_actual_id = $_SESSION['admin_id'] ?? 0;
+
+// =========================================================================
+// MIGRACIÓN AUTOMÁTICA TRANSPARENTE DE ARCHIVOS ANTIGUOS AL REPOSITORIO
+// =========================================================================
+try {
+    $hayLegacy = $pdo->query("SELECT COUNT(*) FROM personal_archivos_digitales")->fetchColumn();
+    if ($hayLegacy > 0) {
+        $legacyDocs = $pdo->query("SELECT * FROM personal_archivos_digitales")->fetchAll();
+        foreach ($legacyDocs as $ld) {
+            $chk = $pdo->prepare("SELECT id FROM documentos WHERE codigo_archivo = ?");
+            $chk->execute([$ld['codigo_archivo']]);
+            $docExistId = $chk->fetchColumn();
+
+            if (!$docExistId) {
+                $stmtTipo = $pdo->prepare("SELECT id FROM cat_tipos_documentos WHERE clave = ?");
+                $stmtTipo->execute([$ld['tipo_documento_clave']]);
+                $tipoDocId = $stmtTipo->fetchColumn() ?: 7;
+
+                $tam = file_exists($ld['ruta_archivo']) ? filesize($ld['ruta_archivo']) : 0;
+                $hash = file_exists($ld['ruta_archivo']) ? hash_file('sha256', $ld['ruta_archivo']) : null;
+                $mime = $ld['mime_type'] ?: 'application/octet-stream';
+
+                $pdo->prepare("INSERT INTO documentos (tipo_documento_id, codigo_archivo, nombre_original, ruta_archivo, mime_type, tamano_bytes, hash_verificacion, fecha_subida) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+                    ->execute([$tipoDocId, $ld['codigo_archivo'], $ld['nombre_original'], $ld['ruta_archivo'], $mime, $tam, $hash, $ld['fecha_subida']]);
+                $docExistId = $pdo->lastInsertId();
+            }
+
+            $chkEnl = $pdo->prepare("SELECT id FROM documentos_enlaces WHERE documento_id = ? AND tabla_destino = 'personal' AND registro_id = ?");
+            $chkEnl->execute([$docExistId, $ld['personal_id']]);
+            if (!$chkEnl->fetchColumn()) {
+                $pdo->prepare("INSERT INTO documentos_enlaces (documento_id, tabla_destino, registro_id, notas) VALUES (?, 'personal', ?, 'Migrado desde expediente personal')")
+                    ->execute([$docExistId, $ld['personal_id']]);
+            }
+        }
+    }
+} catch (Exception $e) { /* Ignorar si la tabla antigua no existe */ }
+
 // ==========================================
 // 1. PROCESAMIENTO DEL FORMULARIO (POST)
 // ==========================================
@@ -16,14 +56,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // A. ACCIONES MASIVAS (MULTIPLES SUJETOS)
         // -------------------------------------------
         if ($accion === 'bulk_delete' && !empty($_POST['bulk_ids'])) {
-            $ids = explode(',', $_POST['bulk_ids']);
+            if (!tienePermisoReBAC($pdo, $usuario_actual_id, 'expediente_personal', 'eliminar')) die("Sin permiso ReBAC para eliminar.");
+            $ids = array_map('intval', explode(',', $_POST['bulk_ids']));
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            
+            // Desvincular documentos (el archivo permanece seguro e independiente en el repositorio)
+            $pdo->prepare("DELETE FROM documentos_enlaces WHERE tabla_destino = 'personal' AND registro_id IN ($placeholders)")->execute($ids);
             $pdo->prepare("DELETE FROM personal WHERE id IN ($placeholders)")->execute($ids);
             registrarHistorial($pdo, 'Personal', 'ELIMINAR', "Eliminación masiva de " . count($ids) . " registros.");
         } 
         elseif ($accion === 'bulk_move' && !empty($_POST['bulk_ids']) && !empty($_POST['nuevo_cargo_id'])) {
-            $ids = explode(',', $_POST['bulk_ids']);
-            $nuevo_cargo = $_POST['nuevo_cargo_id'];
+            if (!tienePermisoReBAC($pdo, $usuario_actual_id, 'expediente_personal', 'editar')) die("Sin permiso ReBAC para editar.");
+            $ids = array_map('intval', explode(',', $_POST['bulk_ids']));
+            $nuevo_cargo = intval($_POST['nuevo_cargo_id']);
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
             
             $params = array_merge([$nuevo_cargo], $ids);
@@ -34,6 +79,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // B. CREAR O EDITAR INDIVIDUAL
         // -------------------------------------------
         elseif ($accion === 'crear' || $accion === 'editar') {
+            if ($accion === 'crear' && !tienePermisoReBAC($pdo, $usuario_actual_id, 'expediente_personal', 'crear')) die("Sin permiso ReBAC para crear.");
+            if ($accion === 'editar' && !tienePermisoReBAC($pdo, $usuario_actual_id, 'expediente_personal', 'editar', intval($id))) die("Sin permiso ReBAC para editar.");
+
             $cedula = trim($_POST['cedula']);
             $nombres = trim($_POST['nombres']);
             $apellidos = trim($_POST['apellidos']);
@@ -51,16 +99,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("INSERT INTO personal_cargos (personal_id, cargo_area_id, fecha_asignacion) VALUES (?, ?, ?)")->execute([$personal_id, $cargo_area_id, $fecha_ingreso]);
 
                 if (!empty($telefono)) $pdo->prepare("INSERT INTO personal_contactos (personal_id, tipo_contacto, valor) VALUES (?, 'Teléfono Personal', ?)")->execute([$personal_id, $telefono]);
-                registrarHistorial($pdo, 'Personal', 'CREAR', "Registró al trabajador C.I: $cedula");
+                registrarHistorial($pdo, 'Personal', 'CREAR', "Registró al trabajador C.I: $cedula", $personal_id);
 
             } elseif ($accion === 'editar') {
-                $personal_id = $id;
+                $personal_id = intval($id);
                 $pdo->prepare("UPDATE personal SET cedula=?, nombres=?, apellidos=?, fecha_nacimiento=?, fecha_ingreso=?, estado_laboral=? WHERE id=?")->execute([$cedula, $nombres, $apellidos, $fecha_nacimiento, $fecha_ingreso, $estado_laboral, $personal_id]);
                 $pdo->prepare("UPDATE personal_cargos SET cargo_area_id=? WHERE personal_id=? AND estado_cargo='Vigente'")->execute([$cargo_area_id, $personal_id]);
                 
                 $pdo->prepare("DELETE FROM personal_contactos WHERE personal_id=? AND tipo_contacto='Teléfono Personal'")->execute([$personal_id]);
                 if (!empty($telefono)) $pdo->prepare("INSERT INTO personal_contactos (personal_id, tipo_contacto, valor) VALUES (?, 'Teléfono Personal', ?)")->execute([$personal_id, $telefono]);
-                registrarHistorial($pdo, 'Personal', 'ACTUALIZAR', "Actualizó al trabajador C.I: $cedula");
+                registrarHistorial($pdo, 'Personal', 'ACTUALIZAR', "Actualizó al trabajador C.I: $cedula", $personal_id);
             }
 
             // Guardar Datos Extra
@@ -82,9 +130,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ");
             $stmtExtra->execute([$personal_id, $_POST['estado_civil']??'Soltero/a', intval($_POST['cantidad_hijos']??0), $_POST['etnia']??null, !empty($_POST['fecha_ingreso_mppe'])?$_POST['fecha_ingreso_mppe']:null, $_POST['dependencia']??null, $_POST['codigo_dependencia']??null, $_POST['turno']??'Mañana', $_POST['nivel_academico']??null, $_POST['correo_electronico']??null, $_POST['banco_nomina']??null, $_POST['cuenta_bancaria']??null, $_POST['cargo_nominal']??null, $_POST['codigo_cargo']??null, intval($_POST['horas_laborales']??0), $_POST['direccion_habitacion']??null, $_POST['municipio']??null, $_POST['parroquia']??null, $_POST['centro_votacion']??null, $_POST['patologias']??null, $_POST['medicamentos_permanentes']??null, $_POST['tipo_sangre']??null, $_POST['alergias_medicas']??null, $_POST['condiciones_especiales']??null, $_POST['talla_camisa']??null, $_POST['talla_pantalon']??null, $_POST['talla_calzado']??null]);
 
-            // ========================================================
-            // NUEVO: CARGA MÚLTIPLE DE DOCUMENTOS DIGITALIZADOS
-            // ========================================================
+            // --------------------------------------------------------
+            // 1. SINCRONIZAR VÍNCULOS CON DOCUMENTOS EXISTENTES DEL REPOSITORIO
+            // --------------------------------------------------------
+            $seleccionados = array_map('intval', $_POST['vincular_documentos_existentes'] ?? []);
+            $stmtActuales = $pdo->prepare("SELECT documento_id FROM documentos_enlaces WHERE tabla_destino = 'personal' AND registro_id = ?");
+            $stmtActuales->execute([$personal_id]);
+            $actuales = $stmtActuales->fetchAll(PDO::FETCH_COLUMN);
+
+            // Quitar los que el usuario desmarcó (sin borrar el archivo del repositorio)
+            $paraDesvincular = array_diff($actuales, $seleccionados);
+            if (!empty($paraDesvincular)) {
+                $ph = implode(',', array_fill(0, count($paraDesvincular), '?'));
+                $pdo->prepare("DELETE FROM documentos_enlaces WHERE tabla_destino = 'personal' AND registro_id = ? AND documento_id IN ($ph)")
+                    ->execute(array_merge([$personal_id], $paraDesvincular));
+            }
+
+            // Agregar los nuevos marcados
+            $paraVincular = array_diff($seleccionados, $actuales);
+            if (!empty($paraVincular)) {
+                $stmtLink = $pdo->prepare("INSERT INTO documentos_enlaces (documento_id, tabla_destino, registro_id, notas) VALUES (?, 'personal', ?, 'Vinculado desde ficha de personal')");
+                foreach ($paraVincular as $docVincId) {
+                    $stmtLink->execute([$docVincId, $personal_id]);
+                }
+            }
+
+            // --------------------------------------------------------
+            // 2. CARGA MÚLTIPLE DE NUEVOS DOCUMENTOS -> REPOSITORIO CENTRAL ('documentos')
+            // --------------------------------------------------------
             if (isset($_FILES['archivo_expediente']) && is_array($_FILES['archivo_expediente']['name'])) {
                 $directorio = '../documentos/';
                 if (!file_exists($directorio)) mkdir($directorio, 0777, true);
@@ -94,29 +167,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($_FILES['archivo_expediente']['error'][$idx] === UPLOAD_ERR_OK) {
                         $tipo_clave = $_POST['tipo_archivo_clave'][$idx] ?? 'OTR';
                         $tmpName = $_FILES['archivo_expediente']['tmp_name'][$idx];
-                        $mime = $_FILES['archivo_expediente']['type'][$idx];
+                        $mime = $_FILES['archivo_expediente']['type'][$idx] ?: mime_content_type($tmpName);
+                        $tamano = $_FILES['archivo_expediente']['size'][$idx];
+                        $hash = hash_file('sha256', $tmpName);
                         $ext = strtolower(pathinfo($nombreOriginal, PATHINFO_EXTENSION));
 
-                        // Calcular correlativo según el tipo de documento para esta persona
-                        $stmtS = $pdo->prepare("SELECT MAX(numero_secuencia) FROM personal_archivos_digitales WHERE personal_id = ? AND tipo_documento_clave = ?");
-                        $stmtS->execute([$personal_id, $tipo_clave]);
+                        // Buscar ID del tipo en cat_tipos_documentos
+                        $stmtT = $pdo->prepare("SELECT id FROM cat_tipos_documentos WHERE clave = ?");
+                        $stmtT->execute([$tipo_clave]);
+                        $tipoDocId = $stmtT->fetchColumn() ?: 7;
+
+                        // Calcular correlativo seguro
+                        $stmtS = $pdo->prepare("SELECT COUNT(*) FROM documentos d JOIN documentos_enlaces de ON d.id = de.documento_id WHERE de.tabla_destino = 'personal' AND de.registro_id = ? AND d.tipo_documento_id = ?");
+                        $stmtS->execute([$personal_id, $tipoDocId]);
                         $secuencia = intval($stmtS->fetchColumn()) + 1;
 
                         $nombre_codigo = sprintf("V%s_%d_%s_%02d.%s", $cedula_limpia, $personal_id, $tipo_clave, $secuencia, $ext);
+                        
+                        // Evitar colisión si el archivo existió antes
+                        $chkCod = $pdo->prepare("SELECT COUNT(*) FROM documentos WHERE codigo_archivo = ?");
+                        $chkCod->execute([$nombre_codigo]);
+                        if ($chkCod->fetchColumn() > 0) {
+                            $nombre_codigo = sprintf("V%s_%d_%s_%02d_%s.%s", $cedula_limpia, $personal_id, $tipo_clave, $secuencia, substr(uniqid(), -4), $ext);
+                        }
+
                         $rutaFinal = $directorio . $nombre_codigo;
 
                         if (move_uploaded_file($tmpName, $rutaFinal)) {
-                            $pdo->prepare("INSERT INTO personal_archivos_digitales (personal_id, codigo_archivo, tipo_documento_clave, numero_secuencia, nombre_original, ruta_archivo, mime_type) VALUES (?, ?, ?, ?, ?, ?, ?)")
-                                ->execute([$personal_id, $nombre_codigo, $tipo_clave, $secuencia, $nombreOriginal, $rutaFinal, $mime]);
-                            registrarHistorial($pdo, 'Documentos', 'CREAR', "Adjuntó $nombre_codigo al expediente.");
+                            // 1) Insertar en repositorio general 'documentos'
+                            $pdo->prepare("INSERT INTO documentos (tipo_documento_id, codigo_archivo, nombre_original, ruta_archivo, mime_type, tamano_bytes, hash_verificacion) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                                ->execute([$tipoDocId, $nombre_codigo, $nombreOriginal, $rutaFinal, $mime, $tamano, $hash]);
+                            $nuevoDocId = $pdo->lastInsertId();
+
+                            // 2) Vincular con el trabajador en 'documentos_enlaces'
+                            $pdo->prepare("INSERT INTO documentos_enlaces (documento_id, tabla_destino, registro_id, notas) VALUES (?, 'personal', ?, 'Subido desde ficha de personal')")
+                                ->execute([$nuevoDocId, $personal_id]);
+
+                            registrarHistorial($pdo, 'Documentos', 'CREAR', "Subió archivo $nombre_codigo al repositorio y lo vinculó al expediente #$personal_id.", $nuevoDocId);
                         }
                     }
                 }
             }
         } 
         elseif ($accion === 'eliminar') {
+            if (!tienePermisoReBAC($pdo, $usuario_actual_id, 'expediente_personal', 'eliminar', intval($id))) die("Sin permiso ReBAC para eliminar.");
+            $pdo->prepare("DELETE FROM documentos_enlaces WHERE tabla_destino = 'personal' AND registro_id = ?")->execute([$id]);
             $pdo->prepare("DELETE FROM personal WHERE id=?")->execute([$id]);
-            registrarHistorial($pdo, 'Personal', 'ELIMINAR', "Eliminó registro de personal individual.");
+            registrarHistorial($pdo, 'Personal', 'ELIMINAR', "Eliminó registro de personal individual.", $id);
         }
 
         $pdo->commit();
@@ -131,7 +228,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ==========================================
-// 2. UI CONFIG & QUERIES
+// 2. UI CONFIG & QUERIES (LEYENDO DEL REPOSITORIO UNIFICADO)
 // ==========================================
 $tipo_id = isset($_GET['tipo']) ? intval($_GET['tipo']) : 1;
 $filtro_cargo = isset($_GET['cargo']) ? intval($_GET['cargo']) : null;
@@ -149,10 +246,24 @@ $sql = "
            TIMESTAMPDIFF(YEAR, pda.fecha_ingreso_mppe, CURDATE()) as anios_servicio,
            pc.cargo_area_id, c.nombre as cargo_nombre, c.descripcion as cargo_descripcion,
            (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Teléfono Personal' LIMIT 1) as telefono,
-           (SELECT ruta_archivo FROM personal_archivos_digitales WHERE personal_id = p.id AND tipo_documento_clave = 'FOT' ORDER BY id DESC LIMIT 1) as ruta_foto_carnet,
-           (SELECT ruta_archivo FROM personal_archivos_digitales WHERE personal_id = p.id AND tipo_documento_clave = 'CED' ORDER BY id DESC LIMIT 1) as ruta_foto_cedula,
-           (SELECT GROUP_CONCAT(CONCAT(tipo_documento_clave, '::', codigo_archivo, '::', ruta_archivo) SEPARATOR '||') 
-            FROM personal_archivos_digitales WHERE personal_id = p.id) as galeria_archivos,
+           (SELECT d.ruta_archivo FROM documentos d 
+            JOIN documentos_enlaces de ON d.id = de.documento_id 
+            JOIN cat_tipos_documentos td ON d.tipo_documento_id = td.id
+            WHERE de.tabla_destino = 'personal' AND de.registro_id = p.id AND td.clave = 'FOT' 
+            ORDER BY d.id DESC LIMIT 1) as ruta_foto_carnet,
+           (SELECT d.ruta_archivo FROM documentos d 
+            JOIN documentos_enlaces de ON d.id = de.documento_id 
+            JOIN cat_tipos_documentos td ON d.tipo_documento_id = td.id
+            WHERE de.tabla_destino = 'personal' AND de.registro_id = p.id AND td.clave = 'CED' 
+            ORDER BY d.id DESC LIMIT 1) as ruta_foto_cedula,
+           (SELECT GROUP_CONCAT(CONCAT(td.clave, '::', d.codigo_archivo, '::', d.ruta_archivo) SEPARATOR '||') 
+            FROM documentos d 
+            JOIN documentos_enlaces de ON d.id = de.documento_id 
+            JOIN cat_tipos_documentos td ON d.tipo_documento_id = td.id
+            WHERE de.tabla_destino = 'personal' AND de.registro_id = p.id) as galeria_archivos,
+           (SELECT GROUP_CONCAT(de.documento_id)
+            FROM documentos_enlaces de
+            WHERE de.tabla_destino = 'personal' AND de.registro_id = p.id) as documentos_vinculados_ids,
            pda.*,
            p.id
     FROM personal p 
@@ -174,11 +285,18 @@ $lista_cargos = $pdo->prepare("SELECT id, nombre FROM cat_cargos_areas WHERE tip
 $lista_cargos->execute([$tipo_id]);
 $lista_cargos = $lista_cargos->fetchAll();
 
+// Cargar todos los documentos del repositorio para poder vincularlos desde el modal de Personal
+$docsRepositorio = $pdo->query("
+    SELECT d.id, d.codigo_archivo, d.nombre_original, td.clave
+    FROM documentos d
+    JOIN cat_tipos_documentos td ON d.tipo_documento_id = td.id
+    ORDER BY d.fecha_subida DESC
+")->fetchAll();
+
 include '../Includes/header.php'; include '../Includes/sidebar.php';
 ?>
 
 <style>
-/* CSS del Popover, Hover y Checkboxes */
 .popover-content { display: none; position: absolute; z-index: 9999 !important; left: 70px; top: -40px; width: 220px; background-color: var(--bs-body-bg); color: var(--bs-body-color); border: 1px solid var(--bs-border-color); border-radius: 12px; box-shadow: 0 15px 35px rgba(0,0,0,0.5); padding: 15px; pointer-events: none; }
 [data-bs-theme="dark"] .popover-content { background-color: #212529 !important; border-color: #495057 !important; color: #ffffff !important; }
 [data-bs-theme="dark"] .popover-content span, [data-bs-theme="dark"] .popover-content strong { color: #ffffff !important; }
@@ -189,7 +307,6 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
 .badge-interactive { transition: all 0.2s ease; cursor: pointer; display: inline-flex; align-items: center; }
 .badge-interactive:hover { background-color: var(--bs-primary) !important; color: white !important; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
 
-/* ESTILOS PARA ORDENAR Y ARRASTRAR COLUMNAS */
 th.sortable { cursor: pointer; user-select: none; position: relative; padding-right: 20px !important; }
 th.sortable:hover { background-color: rgba(0,0,0,0.05); }
 th.sortable::after { content: '↕'; position: absolute; right: 8px; opacity: 0.3; }
@@ -198,10 +315,8 @@ th.sortable.desc::after { content: '↓'; opacity: 1; color: var(--bs-primary); 
 th[draggable="true"] { cursor: grab; }
 th[draggable="true"]:active { cursor: grabbing; }
 
-/* TR COLOR SELECCIONADO */
 tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
 
-/* BARRA FLOTANTE (BULK ACTIONS) */
 #bulk-toolbar {
     position: fixed; bottom: -100px; left: 50%; transform: translateX(-50%);
     background-color: var(--bs-dark); color: white; border-radius: 50px;
@@ -318,26 +433,17 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
 <!-- BARRA FLOTANTE INFERIOR (ACCIONES MASIVAS) -->
 <div id="bulk-toolbar">
     <span id="bulk-count" class="fw-bold border-end border-secondary pe-3 me-2">0 seleccionados</span>
-    
-    <button class="btn btn-sm btn-info fw-bold text-white rounded-pill" onclick="abrirModalBulkMove()">
-        <i class="bi bi-arrow-left-right me-1"></i> Cambiar Cargo
-    </button>
-    <button class="btn btn-sm btn-danger fw-bold rounded-pill" onclick="ejecutarBulkDelete()">
-        <i class="bi bi-trash me-1"></i> Eliminar
-    </button>
-    <button class="btn btn-sm btn-outline-light rounded-circle ms-2" onclick="limpiarSeleccion()" title="Desmarcar Todos">
-        <i class="bi bi-x-lg"></i>
-    </button>
+    <button class="btn btn-sm btn-info fw-bold text-white rounded-pill" onclick="abrirModalBulkMove()"><i class="bi bi-arrow-left-right me-1"></i> Cambiar Cargo</button>
+    <button class="btn btn-sm btn-danger fw-bold rounded-pill" onclick="ejecutarBulkDelete()"><i class="bi bi-trash me-1"></i> Eliminar</button>
+    <button class="btn btn-sm btn-outline-light rounded-circle ms-2" onclick="limpiarSeleccion()" title="Desmarcar Todos"><i class="bi bi-x-lg"></i></button>
 </div>
 
-<!-- FORMULARIO OCULTO PARA ENVÍO DE MULTIPLES ACCIONES -->
 <form id="bulkForm" method="POST" style="display:none;">
     <input type="hidden" name="accion" id="bulkAccion">
     <input type="hidden" name="bulk_ids" id="bulkIds">
     <input type="hidden" name="nuevo_cargo_id" id="bulkNuevoCargo">
 </form>
 
-<!-- MODAL PARA CAMBIAR CARGO MASIVAMENTE -->
 <div class="modal fade" id="modalBulkMove" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-sm">
         <div class="modal-content border-0 shadow">
@@ -346,7 +452,7 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body bg-light">
-                <p class="small text-muted mb-2">Seleccione el nuevo cargo/área a donde se moverán los trabajadores seleccionados (Su cargo actual será reemplazado).</p>
+                <p class="small text-muted mb-2">Seleccione el nuevo cargo/área:</p>
                 <select id="selectNuevoCargoMasivo" class="form-select border-info shadow-sm">
                     <?php foreach ($lista_cargos as $cargo): ?>
                         <option value="<?= $cargo['id'] ?>"><?= htmlspecialchars($cargo['nombre']) ?></option>
@@ -360,9 +466,7 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
     </div>
 </div>
 
-<!-- ========================================== -->
-<!-- OFFCANVAS (EXPEDIENTE MPPE + ARCHIVOS) -->
-<!-- ========================================== -->
+<!-- OFFCANVAS (EXPEDIENTE MPPE + ARCHIVOS DEL REPOSITORIO) -->
 <div class="offcanvas offcanvas-end shadow" tabindex="-1" id="panelDatosExtra" style="width: 480px;">
   <div class="offcanvas-header bg-primary text-white">
     <h5 class="offcanvas-title mb-0"><i class="bi bi-folder2-open me-2"></i>Expediente Digitalizado</h5>
@@ -375,7 +479,10 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
           <span id="oc_edad" class="badge bg-secondary fs-6">Edad: -</span>
       </div>
 
-      <h6 class="text-warning fw-bold mb-2"><i class="bi bi-images me-2"></i>Archivos Digitales Registrados</h6>
+      <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="text-warning fw-bold mb-0"><i class="bi bi-images me-2"></i>Archivos Vinculados</h6>
+          <a href="documentos.php" class="small text-decoration-none fw-bold">Ir a Archivos <i class="bi bi-arrow-right"></i></a>
+      </div>
       <div class="card border-0 shadow-sm p-3 mb-3 bg-body">
           <div id="oc_galeria" class="d-flex flex-wrap gap-2"></div>
       </div>
@@ -410,9 +517,7 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
   </div>
 </div>
 
-<!-- ======================================================== -->
-<!-- MODAL DE REGISTRO CON CARGA MÚLTIPLE DE DOCUMENTOS -->
-<!-- ======================================================== -->
+<!-- MODAL DE REGISTRO CON CARGA MÚLTIPLE + VINCULACIÓN AL REPOSITORIO -->
 <div class="modal fade" id="modalRegistro" tabindex="-1">
     <div class="modal-dialog modal-xl">
         <div class="modal-content border-0">
@@ -458,39 +563,68 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
                         </div>
                     </div>
 
-                    <!-- SECCIÓN: ADJUNTAR MÚLTIPLES ARCHIVOS DIGITALES -->
-                    <div class="card border-0 shadow-sm mb-3 border-start border-4 border-warning">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <h6 class="text-warning fw-bold mb-0"><i class="bi bi-folder-plus me-1"></i> Documentos Digitalizados (Carga Múltiple)</h6>
-                                <button type="button" class="btn btn-outline-warning btn-sm fw-bold" onclick="agregarFilaArchivo()">
-                                    <i class="bi bi-plus-lg me-1"></i> Agregar otro archivo
-                                </button>
-                            </div>
-                            <p class="small text-muted mb-3">Puedes cargar varios documentos simultáneamente (Cédula, Títulos, Fotos carnet, Reposos) asignándoles su categoría.</p>
-
-                            <!-- Contenedor dinámico de filas de archivo -->
-                            <div id="contenedorArchivos">
-                                <div class="row g-2 align-items-center mb-2 fila-archivo">
-                                    <div class="col-md-4">
-                                        <label class="small text-muted">Tipo de Documento:</label>
-                                        <select name="tipo_archivo_clave[]" class="form-select form-select-sm">
-                                            <option value="FOT">FOT - Foto Tipo Carnet</option>
-                                            <option value="CED">CED - Cédula Escaneada</option>
-                                            <option value="TIT">TIT - Título / Fondo Negro</option>
-                                            <option value="MED">MED - Certificado Médico</option>
-                                            <option value="SOP">SOP - Constancia / Reposo</option>
-                                            <option value="OTR">OTR - Otro Documento</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-7">
-                                        <label class="small text-muted">Seleccionar Imagen o Documento:</label>
-                                        <input type="file" name="archivo_expediente[]" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp">
-                                    </div>
-                                    <div class="col-md-1 text-center pt-3">
-                                        <button type="button" class="btn btn-sm text-danger border-0" onclick="eliminarFilaArchivo(this)" title="Quitar archivo">
-                                            <i class="bi bi-x-circle-fill fs-5"></i>
+                    <!-- SECCIÓN UNIFICADA: SUBIR NUEVOS ARCHIVOS O VINCULAR DEL REPOSITORIO -->
+                    <div class="row g-3 mb-3">
+                        <!-- Columna Izquierda: Subir nuevos -->
+                        <div class="col-lg-7">
+                            <div class="card border-0 shadow-sm h-100 border-start border-4 border-warning">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h6 class="text-warning fw-bold mb-0"><i class="bi bi-cloud-arrow-up-fill me-1"></i> Subir Nuevos Archivos (Se envían a Archivos)</h6>
+                                        <button type="button" class="btn btn-outline-warning btn-sm fw-bold" onclick="agregarFilaArchivo()">
+                                            <i class="bi bi-plus-lg"></i> Otro
                                         </button>
+                                    </div>
+                                    <p class="small text-muted mb-2">Todo archivo subido aquí se sella con SHA-256 y queda en el Repositorio Central.</p>
+
+                                    <div id="contenedorArchivos">
+                                        <div class="row g-2 align-items-center mb-2 fila-archivo">
+                                            <div class="col-md-5">
+                                                <select name="tipo_archivo_clave[]" class="form-select form-select-sm">
+                                                    <option value="FOT">FOT - Foto Tipo Carnet</option>
+                                                    <option value="CED">CED - Cédula Escaneada</option>
+                                                    <option value="TIT">TIT - Título / Fondo Negro</option>
+                                                    <option value="MED">MED - Certificado Médico</option>
+                                                    <option value="SOP">SOP - Constancia / Reposo</option>
+                                                    <option value="OTR">OTR - Otro Documento</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <input type="file" name="archivo_expediente[]" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp,.doc,.docx">
+                                            </div>
+                                            <div class="col-md-1 text-center">
+                                                <button type="button" class="btn btn-sm text-danger border-0 p-0" onclick="eliminarFilaArchivo(this)" title="Quitar archivo">
+                                                    <i class="bi bi-x-circle-fill fs-5"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Columna Derecha: Vincular existentes del repositorio -->
+                        <div class="col-lg-5">
+                            <div class="card border-0 shadow-sm h-100 border-start border-4 border-info">
+                                <div class="card-body">
+                                    <h6 class="text-info fw-bold mb-2"><i class="bi bi-link-45deg me-1"></i> Vincular desde Archivos Existentes</h6>
+                                    <input type="text" id="buscarDocVincular" class="form-control form-control-sm mb-2" placeholder="🔍 Filtrar archivos del repositorio...">
+                                    
+                                    <div class="border rounded p-2 bg-body" style="max-height: 120px; overflow-y: auto;" id="listaCheckboxesDocs">
+                                        <?php if (count($docsRepositorio) > 0): ?>
+                                            <?php foreach ($docsRepositorio as $dr): ?>
+                                                <div class="form-check small item-doc-vincular">
+                                                    <input class="form-check-input chk-vincular-doc" type="checkbox" name="vincular_documentos_existentes[]" value="<?= $dr['id'] ?>" id="vinc_doc_<?= $dr['id'] ?>">
+                                                    <label class="form-check-label text-truncate d-block" for="vinc_doc_<?= $dr['id'] ?>" style="cursor:pointer;">
+                                                        <span class="badge bg-secondary-subtle text-body border me-1"><?= $dr['clave'] ?></span>
+                                                        <strong><?= htmlspecialchars($dr['nombre_original']) ?></strong>
+                                                        <small class="text-muted">(<?= htmlspecialchars($dr['codigo_archivo']) ?>)</small>
+                                                    </label>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        <?php else: ?>
+                                            <span class="text-muted small d-block text-center py-3">No hay documentos en el repositorio aún.</span>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </div>
@@ -572,9 +706,7 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
     </div>
 </div>
 
-<!-- ======================================================== -->
-<!-- MODAL: AGREGAR CARGO RÁPIDO (SUPERPUESTO) -->
-<!-- ======================================================== -->
+<!-- MODAL: AGREGAR CARGO RÁPIDO (AJAX) -->
 <div class="modal fade" id="modalQuickAddCargo" tabindex="-1" style="z-index: 1060;">
     <div class="modal-dialog modal-dialog-centered modal-sm">
         <div class="modal-content border-0 shadow-lg">
@@ -585,7 +717,6 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
             <div class="modal-body bg-body-tertiary">
                 <input type="hidden" id="quick_tipo_id">
                 <input type="hidden" id="quick_select_id">
-                
                 <div class="mb-3">
                     <label class="form-label small fw-bold text-muted">Nombre del Cargo/Materia</label>
                     <input type="text" id="quick_nombre_cargo" class="form-control form-control-sm" placeholder="Ej: Biología" required>
@@ -602,16 +733,21 @@ tr.selected { background-color: rgba(13, 110, 253, 0.1) !important; }
     </div>
 </div>
 
-<!-- ======================================================== -->
-<!-- SCRIPT: GESTIÓN DE ARCHIVOS DINÁMICOS -->
-<!-- ======================================================== -->
 <script>
+// Buscador en vivo dentro del cuadro de documentos a vincular
+document.getElementById('buscarDocVincular')?.addEventListener('input', function(e) {
+    let q = e.target.value.toLowerCase();
+    document.querySelectorAll('.item-doc-vincular').forEach(item => {
+        item.style.display = item.innerText.toLowerCase().includes(q) ? '' : 'none';
+    });
+});
+
 function agregarFilaArchivo() {
     let contenedor = document.getElementById('contenedorArchivos');
     let nuevaFila = document.createElement('div');
     nuevaFila.className = 'row g-2 align-items-center mb-2 fila-archivo';
     nuevaFila.innerHTML = `
-        <div class="col-md-4">
+        <div class="col-md-5">
             <select name="tipo_archivo_clave[]" class="form-select form-select-sm">
                 <option value="FOT">FOT - Foto Tipo Carnet</option>
                 <option value="CED">CED - Cédula Escaneada</option>
@@ -621,11 +757,11 @@ function agregarFilaArchivo() {
                 <option value="OTR">OTR - Otro Documento</option>
             </select>
         </div>
-        <div class="col-md-7">
-            <input type="file" name="archivo_expediente[]" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp">
+        <div class="col-md-6">
+            <input type="file" name="archivo_expediente[]" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp,.doc,.docx">
         </div>
         <div class="col-md-1 text-center">
-            <button type="button" class="btn btn-sm text-danger border-0" onclick="eliminarFilaArchivo(this)" title="Quitar archivo">
+            <button type="button" class="btn btn-sm text-danger border-0 p-0" onclick="eliminarFilaArchivo(this)" title="Quitar archivo">
                 <i class="bi bi-x-circle-fill fs-5"></i>
             </button>
         </div>
@@ -635,20 +771,14 @@ function agregarFilaArchivo() {
 
 function eliminarFilaArchivo(btn) {
     let filas = document.querySelectorAll('.fila-archivo');
-    if (filas.length > 1) {
-        btn.closest('.fila-archivo').remove();
-    } else {
-        // Si es la única fila, solo limpiamos el archivo seleccionado
-        btn.closest('.fila-archivo').querySelector('input[type="file"]').value = '';
-    }
+    if (filas.length > 1) btn.closest('.fila-archivo').remove();
+    else btn.closest('.fila-archivo').querySelector('input[type="file"]').value = '';
 }
 
 function resetearFilasArchivos() {
-    let contenedor = document.getElementById('contenedorArchivos');
-    contenedor.innerHTML = `
+    document.getElementById('contenedorArchivos').innerHTML = `
         <div class="row g-2 align-items-center mb-2 fila-archivo">
-            <div class="col-md-4">
-                <label class="small text-muted">Tipo de Documento:</label>
+            <div class="col-md-5">
                 <select name="tipo_archivo_clave[]" class="form-select form-select-sm">
                     <option value="FOT">FOT - Foto Tipo Carnet</option>
                     <option value="CED">CED - Cédula Escaneada</option>
@@ -658,82 +788,66 @@ function resetearFilasArchivos() {
                     <option value="OTR">OTR - Otro Documento</option>
                 </select>
             </div>
-            <div class="col-md-7">
-                <label class="small text-muted">Seleccionar Imagen o Documento:</label>
-                <input type="file" name="archivo_expediente[]" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp">
+            <div class="col-md-6">
+                <input type="file" name="archivo_expediente[]" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp,.doc,.docx">
             </div>
-            <div class="col-md-1 text-center pt-3">
-                <button type="button" class="btn btn-sm text-danger border-0" onclick="eliminarFilaArchivo(this)" title="Quitar archivo">
+            <div class="col-md-1 text-center">
+                <button type="button" class="btn btn-sm text-danger border-0 p-0" onclick="eliminarFilaArchivo(this)" title="Quitar archivo">
                     <i class="bi bi-x-circle-fill fs-5"></i>
                 </button>
             </div>
         </div>
     `;
 }
-</script>
 
-<!-- ======================================================== -->
-<!-- SCRIPT: SELECCION MULTIPLE Y ACCIONES MASIVAS -->
-<!-- ======================================================== -->
-<script>
+function limpiarCheckboxesDocumentos() {
+    document.getElementById('buscarDocVincular').value = '';
+    document.querySelectorAll('.item-doc-vincular').forEach(item => item.style.display = '');
+    document.querySelectorAll('.chk-vincular-doc').forEach(cb => cb.checked = false);
+}
+
+function cargarCheckboxesDocumentos(btn) {
+    limpiarCheckboxesDocumentos();
+    try {
+        let d = JSON.parse(btn.getAttribute("data-empleado"));
+        if (d.documentos_vinculados_ids) {
+            let ids = d.documentos_vinculados_ids.split(',').map(s => s.trim());
+            document.querySelectorAll('.chk-vincular-doc').forEach(cb => {
+                cb.checked = ids.includes(cb.value);
+            });
+        }
+    } catch(e) {}
+}
+
+// Selección múltiple y acciones masivas
 let selectedIds = new Set();
-
 function checkRow(checkbox) {
     let tr = checkbox.closest('tr');
-    if (checkbox.checked) {
-        selectedIds.add(checkbox.value);
-        tr.classList.add('selected');
-    } else {
-        selectedIds.delete(checkbox.value);
-        tr.classList.remove('selected');
-        document.getElementById('checkAll').checked = false;
-    }
+    if (checkbox.checked) { selectedIds.add(checkbox.value); tr.classList.add('selected'); } 
+    else { selectedIds.delete(checkbox.value); tr.classList.remove('selected'); document.getElementById('checkAll').checked = false; }
     actualizarToolbar();
 }
-
-function toggleAll(masterCheck) {
-    let checkboxes = document.querySelectorAll('.row-check');
-    checkboxes.forEach(cb => {
-        cb.checked = masterCheck.checked;
-        checkRow(cb);
-    });
-}
-
-function limpiarSeleccion() {
-    document.getElementById('checkAll').checked = false;
-    toggleAll(document.getElementById('checkAll'));
-}
-
+function toggleAll(masterCheck) { document.querySelectorAll('.row-check').forEach(cb => { cb.checked = masterCheck.checked; checkRow(cb); }); }
+function limpiarSeleccion() { document.getElementById('checkAll').checked = false; toggleAll(document.getElementById('checkAll')); }
 function actualizarToolbar() {
     let toolbar = document.getElementById('bulk-toolbar');
-    let countSpan = document.getElementById('bulk-count');
-    
     if (selectedIds.size > 0) {
-        countSpan.innerText = selectedIds.size + (selectedIds.size === 1 ? " seleccionado" : " seleccionados");
+        document.getElementById('bulk-count').innerText = selectedIds.size + (selectedIds.size === 1 ? " seleccionado" : " seleccionados");
         toolbar.classList.add('show');
-    } else {
-        toolbar.classList.remove('show');
-    }
+    } else toolbar.classList.remove('show');
 }
-
 function getSelectedArray() { return Array.from(selectedIds).join(','); }
-
 function ejecutarBulkDelete() {
-    if(confirm(`¿Estás seguro de eliminar a los ${selectedIds.size} trabajadores seleccionados? (Se borrará todo su historial y archivos).`)) {
+    if(confirm(`¿Estás seguro de eliminar a los ${selectedIds.size} trabajadores seleccionados? (Sus documentos se mantendrán a salvo en Archivo Digital).`)) {
         document.getElementById('bulkAccion').value = 'bulk_delete';
         document.getElementById('bulkIds').value = getSelectedArray();
         document.getElementById('bulkForm').submit();
     }
 }
-
-function abrirModalBulkMove() {
-    new bootstrap.Modal(document.getElementById('modalBulkMove')).show();
-}
-
+function abrirModalBulkMove() { new bootstrap.Modal(document.getElementById('modalBulkMove')).show(); }
 function ejecutarBulkMove() {
     let nuevoCargo = document.getElementById('selectNuevoCargoMasivo').value;
-    if(!nuevoCargo) { alert("Debe seleccionar un cargo de la lista."); return; }
-    
+    if(!nuevoCargo) return alert("Debe seleccionar un cargo de la lista.");
     if(confirm(`¿Trasladar a los ${selectedIds.size} trabajadores al nuevo cargo?`)) {
         document.getElementById('bulkAccion').value = 'bulk_move';
         document.getElementById('bulkIds').value = getSelectedArray();
@@ -741,174 +855,72 @@ function ejecutarBulkMove() {
         document.getElementById('bulkForm').submit();
     }
 }
-</script>
 
-<!-- ======================================================== -->
-<!-- SCRIPT: ORDENAMIENTO (ASC/DESC) Y ARRASTRE DE COLUMNAS -->
-<!-- ======================================================== -->
-<script>
+// Ordenar y arrastrar columnas
 const getCellValue = (tr, idx) => tr.children[idx].innerText || tr.children[idx].textContent;
 const comparer = (idx, asc) => (a, b) => ((v1, v2) => 
     v1 !== '' && v2 !== '' && !isNaN(v1) && !isNaN(v2) ? v1 - v2 : v1.toString().localeCompare(v2)
     )(getCellValue(asc ? a : b, idx), getCellValue(asc ? b : a, idx));
 
 document.querySelectorAll('th.sortable').forEach(th => th.addEventListener('click', (() => {
-    const table = th.closest('table');
-    const tbody = table.querySelector('tbody');
-    
-    Array.from(th.parentNode.children).forEach(sibling => {
-        if(sibling !== th) { sibling.classList.remove('asc', 'desc'); }
-    });
-    
+    const table = th.closest('table'); const tbody = table.querySelector('tbody');
+    Array.from(th.parentNode.children).forEach(s => { if(s !== th) s.classList.remove('asc', 'desc'); });
     let asc = th.classList.contains('asc');
-    th.classList.toggle('asc', !asc);
-    th.classList.toggle('desc', asc);
-
+    th.classList.toggle('asc', !asc); th.classList.toggle('desc', asc);
     Array.from(tbody.querySelectorAll('tr.fila-personal'))
         .sort(comparer(Array.from(th.parentNode.children).indexOf(th), !asc))
         .forEach(tr => tbody.appendChild(tr));
 })));
 
 let dragColIndex = null;
-
-function dragStart(e) {
-    dragColIndex = Array.from(e.target.parentNode.children).indexOf(e.target);
-    e.dataTransfer.effectAllowed = "move";
-}
-
+function dragStart(e) { dragColIndex = Array.from(e.target.parentNode.children).indexOf(e.target); e.dataTransfer.effectAllowed = "move"; }
 function dragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }
-
 function drop(e) {
-    e.preventDefault();
-    let targetTh = e.target.closest('th');
-    if (!targetTh) return;
-    
+    e.preventDefault(); let targetTh = e.target.closest('th'); if (!targetTh) return;
     let targetIndex = Array.from(targetTh.parentNode.children).indexOf(targetTh);
     if (dragColIndex === targetIndex || dragColIndex === 0 || targetIndex === 0 || targetIndex === 7) return;
-
-    let table = targetTh.closest('table');
-    let rows = table.querySelectorAll('tr');
-
-    rows.forEach(row => {
+    targetTh.closest('table').querySelectorAll('tr').forEach(row => {
         let cells = row.children;
         if (cells.length > Math.max(dragColIndex, targetIndex)) {
-            let colToMove = cells[dragColIndex];
-            let referenceCol = cells[targetIndex];
-            
-            if (dragColIndex < targetIndex) {
-                referenceCol.after(colToMove);
-            } else {
-                referenceCol.before(colToMove);
-            }
+            if (dragColIndex < targetIndex) cells[targetIndex].after(cells[dragColIndex]);
+            else cells[targetIndex].before(cells[dragColIndex]);
         }
     });
 }
-</script>
 
-<!-- ======================================================== -->
-<!-- SCRIPT: AUTO-EDICIÓN DESDE ORGANIGRAMA Y FORMULARIO -->
-<!-- ========================================== -->
-<script>
-// Limpiar formulario y reiniciar sección de archivos
-const originalLimpiar = window.limpiarFormulario;
-window.limpiarFormulario = function() {
-    if(typeof originalLimpiar === 'function') originalLimpiar();
-    resetearFilasArchivos();
-};
-
-const originalEditar = window.editarRegistro;
-window.editarRegistro = function(btn) {
-    if(typeof originalEditar === 'function') originalEditar(btn);
-    resetearFilasArchivos();
-};
-
+// Envolver las funciones de script.js una vez que footer.php termine de cargar
 document.addEventListener("DOMContentLoaded", () => {
+    const originalLimpiar = window.limpiarFormulario;
+    window.limpiarFormulario = function() {
+        if (typeof originalLimpiar === 'function') originalLimpiar();
+        resetearFilasArchivos();
+        limpiarCheckboxesDocumentos();
+    };
+
+    const originalEditar = window.editarRegistro;
+    window.editarRegistro = function(btn) {
+        if (typeof originalEditar === 'function') originalEditar(btn);
+        resetearFilasArchivos();
+        cargarCheckboxesDocumentos(btn);
+    };
+
+    // Auto-edición desde el organigrama
     const urlParams = new URLSearchParams(window.location.search);
     const autoEditId = urlParams.get('auto_edit');
-    
     if (autoEditId) {
         let targetBtn = null;
-        let botonesEdicion = document.querySelectorAll('button[onclick="editarRegistro(this)"]');
-        
-        for (let btn of botonesEdicion) {
+        for (let btn of document.querySelectorAll('button[onclick="editarRegistro(this)"]')) {
             try {
-                let data = JSON.parse(btn.getAttribute('data-empleado'));
-                if (data.id == autoEditId) { 
-                    targetBtn = btn;
-                    break;
-                }
+                if (JSON.parse(btn.getAttribute('data-empleado')).id == autoEditId) { targetBtn = btn; break; }
             } catch (e) {}
         }
-
         if (targetBtn) {
-            editarRegistro(targetBtn);
-            setTimeout(() => {
-                let modalDOM = document.getElementById('modalRegistro');
-                let modalInstancia = bootstrap.Modal.getOrCreateInstance(modalDOM);
-                modalInstancia.show();
-            }, 300);
+            window.editarRegistro(targetBtn);
+            setTimeout(() => { bootstrap.Modal.getOrCreateInstance(document.getElementById('modalRegistro')).show(); }, 300);
         }
         window.history.replaceState(null, '', window.location.pathname + '?tipo=' + urlParams.get('tipo'));
     }
 });
-
-<!-- SCRIPT: CARGO RÁPIDO AJAX -->
-
-function agregarCargoRapido(tipoPersonalId, selectId) {
-    document.getElementById('quick_tipo_id').value = tipoPersonalId;
-    document.getElementById('quick_select_id').value = selectId;
-    document.getElementById('quick_nombre_cargo').value = ''; 
-    document.getElementById('quick_descripcion_cargo').value = ''; 
-    
-    // Abre el segundo modal
-    new bootstrap.Modal(document.getElementById('modalQuickAddCargo')).show();
-}
-
-async function guardarCargoModal() {
-    let nombre = document.getElementById('quick_nombre_cargo').value.trim();
-    let descripcion = document.getElementById('quick_descripcion_cargo').value.trim();
-    let tipoId = document.getElementById('quick_tipo_id').value;
-    let selectId = document.getElementById('quick_select_id').value;
-    let btn = document.getElementById('btnGuardarQuick');
-
-    if (nombre === "") { 
-        alert("Por favor escriba el nombre del cargo."); 
-        document.getElementById('quick_nombre_cargo').focus();
-        return; 
-    }
-
-    btn.disabled = true; 
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
-
-    try {
-        let formData = new FormData();
-        formData.append('nombre', nombre);
-        formData.append('descripcion', descripcion);
-        formData.append('tipo_personal_id', tipoId);
-
-        // Hace la petición al archivo PHP ajax
-        let response = await fetch('../PHP/ajax_agregar_cargo.php', { method: 'POST', body: formData });
-        let data = await response.json();
-
-        if (data.success) {
-            let select = document.getElementById(selectId);
-            if(select) {
-                // Añade la opción al select dinámicamente y la selecciona
-                select.add(new Option(data.nombre, data.id));
-                select.value = data.id; 
-            }
-            // Cierra el mini-modal
-            bootstrap.Modal.getInstance(document.getElementById('modalQuickAddCargo')).hide();
-        } else { 
-            alert("Error: " + data.error); 
-        }
-    } catch (error) { 
-        alert("Error de conexión al guardar el cargo."); 
-    }
-    
-    btn.disabled = false; 
-    btn.innerHTML = 'Guardar y Seleccionar';
-}
 </script>
 
 <?php include '../Includes/footer.php'; ?>

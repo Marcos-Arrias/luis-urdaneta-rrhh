@@ -56,7 +56,7 @@ $queryArbol = $pdo->query("
            pda.turno, pda.correo_electronico, p.fecha_ingreso, p.estado_laboral,
            pda.estado_civil, pda.nivel_academico, pda.tipo_sangre, pda.banco_nomina, pda.direccion_habitacion,
            (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Teléfono Personal' LIMIT 1) as telefono,
-           (SELECT ruta_archivo FROM personal_archivos_digitales WHERE personal_id = p.id AND tipo_documento_clave = 'FOT' ORDER BY id DESC LIMIT 1) as foto
+           (SELECT d.ruta_archivo FROM documentos d JOIN documentos_enlaces de ON d.id = de.documento_id JOIN cat_tipos_documentos td ON d.tipo_documento_id = td.id WHERE de.tabla_destino = 'personal' AND de.registro_id = p.id AND td.clave = 'FOT' ORDER BY d.id DESC LIMIT 1) as foto
     FROM organigrama_jerarquia o
     JOIN personal p ON o.personal_id = p.id
     LEFT JOIN personal_cargos pc ON p.id = pc.personal_id AND pc.estado_cargo = 'Vigente'
@@ -100,7 +100,7 @@ $empleados = $pdo->query("
     SELECT p.id, p.nombres, p.apellidos, c.nombre as cargo, c.tipo_personal_id,
            p.cedula, p.fecha_ingreso, p.estado_laboral,
            (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Teléfono Personal' LIMIT 1) as telefono,
-           (SELECT ruta_archivo FROM personal_archivos_digitales WHERE personal_id = p.id AND tipo_documento_clave = 'FOT' ORDER BY id DESC LIMIT 1) as foto
+           (SELECT d.ruta_archivo FROM documentos d JOIN documentos_enlaces de ON d.id = de.documento_id JOIN cat_tipos_documentos td ON d.tipo_documento_id = td.id WHERE de.tabla_destino = 'personal' AND de.registro_id = p.id AND td.clave = 'FOT' ORDER BY d.id DESC LIMIT 1) as foto
     FROM personal p 
     JOIN personal_cargos pc ON p.id = pc.personal_id AND pc.estado_cargo = 'Vigente'
     JOIN cat_cargos_areas c ON pc.cargo_area_id = c.id 

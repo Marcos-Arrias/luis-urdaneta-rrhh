@@ -19,18 +19,8 @@ try {
     $pdo->exec("USE `$dbname`");
 
     // =========================================================================
-    // LIMPIEZA DE TABLAS OBSOLETAS
+    // 3. ESTRUCTURA BASE (CATÁLOGOS, PERSONAL Y MÓDULOS)
     // =========================================================================
-    $pdo->exec("DROP TABLE IF EXISTS organigrama_institucional");
-    $pdo->exec("DROP TABLE IF EXISTS personal_documentos");
-    $pdo->exec("DROP TABLE IF EXISTS configuracion_organigrama");
-    $pdo->exec("DROP TABLE IF EXISTS personal_permisos_reposos");
-
-    // =========================================================================
-    // 3. ESTRUCTURA EXACTA A CRUD.SQL (ORDEN ESTRICTO DE CLAVES FORÁNEAS)
-    // =========================================================================
-    
-    // CATÁLOGOS
     $pdo->exec("CREATE TABLE IF NOT EXISTS cat_tipos_personal (
         id INT AUTO_INCREMENT PRIMARY KEY, 
         nombre VARCHAR(50) NOT NULL UNIQUE
@@ -50,7 +40,6 @@ try {
         nivel_acceso INT NOT NULL DEFAULT 1
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-    // NÚCLEO PERSONAL
     $pdo->exec("CREATE TABLE IF NOT EXISTS personal (
         id INT AUTO_INCREMENT PRIMARY KEY, 
         cedula VARCHAR(20) NOT NULL UNIQUE, 
@@ -125,7 +114,37 @@ try {
         FOREIGN KEY (personal_id) REFERENCES personal(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-    // MÓDULOS DEL SISTEMA
+    // SISTEMA GENERALIZADO DE DOCUMENTOS
+    $pdo->exec("CREATE TABLE IF NOT EXISTS cat_tipos_documentos (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        clave CHAR(3) NOT NULL UNIQUE,
+        nombre VARCHAR(60) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS documentos (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        tipo_documento_id INT NOT NULL,
+        codigo_archivo VARCHAR(100) NOT NULL UNIQUE,
+        nombre_original VARCHAR(200) NOT NULL,
+        ruta_archivo VARCHAR(255) NOT NULL,
+        mime_type VARCHAR(100) NOT NULL,
+        tamano_bytes BIGINT DEFAULT 0,
+        hash_verificacion VARCHAR(64) DEFAULT NULL,
+        fecha_subida TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (tipo_documento_id) REFERENCES cat_tipos_documentos(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS documentos_enlaces (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        documento_id INT NOT NULL,
+        tabla_destino ENUM('personal','asistencias','cronograma_eventos','institucional') NOT NULL,
+        registro_id INT NOT NULL,
+        notas VARCHAR(255) DEFAULT NULL,
+        KEY idx_busqueda_enlace (tabla_destino, registro_id),
+        FOREIGN KEY (documento_id) REFERENCES documentos(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    // MÓDULOS OPERATIVOS
     $pdo->exec("CREATE TABLE IF NOT EXISTS asistencias (
         id INT AUTO_INCREMENT PRIMARY KEY, 
         personal_id INT NOT NULL, 
@@ -133,6 +152,7 @@ try {
         hora_entrada TIME DEFAULT NULL, 
         hora_salida TIME DEFAULT NULL, 
         estado_asistencia ENUM('Presente', 'Ausente', 'Retardo', 'Falta Justificada') NOT NULL, 
+        cierre_automatico TINYINT(1) NOT NULL DEFAULT 0,
         observaciones VARCHAR(255) DEFAULT NULL, 
         UNIQUE KEY asistencia_unica (personal_id, fecha), 
         FOREIGN KEY (personal_id) REFERENCES personal(id) ON DELETE CASCADE
@@ -160,31 +180,73 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS cronograma_participantes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
         evento_id INT NOT NULL, 
         personal_id INT NOT NULL, 
-        PRIMARY KEY (evento_id, personal_id), 
+        UNIQUE KEY uk_evento_participante (evento_id, personal_id), 
         FOREIGN KEY (evento_id) REFERENCES cronograma_eventos(id) ON DELETE CASCADE, 
         FOREIGN KEY (personal_id) REFERENCES personal(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS organigrama_jerarquia (
-        personal_id INT NOT NULL PRIMARY KEY,
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        personal_id INT NOT NULL UNIQUE,
         jefe_id INT DEFAULT NULL,
         KEY jefe_id (jefe_id),
         CONSTRAINT organigrama_fk_personal FOREIGN KEY (personal_id) REFERENCES personal(id) ON DELETE CASCADE,
         CONSTRAINT organigrama_fk_jefe FOREIGN KEY (jefe_id) REFERENCES personal(id) ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-    // SEGURIDAD Y ACCESOS
+    // =========================================================================
+    // 4. SEGURIDAD, USUARIOS Y MOTOR ReBAC
+    // =========================================================================
     $pdo->exec("CREATE TABLE IF NOT EXISTS usuarios_sistema (
         id INT AUTO_INCREMENT PRIMARY KEY, 
         personal_id INT NULL, 
-        rol_id INT NOT NULL, 
+        rol_id INT NOT NULL DEFAULT 1, 
         username VARCHAR(50) NOT NULL UNIQUE, 
         password_hash VARCHAR(255) NOT NULL, 
         estado ENUM('Activo', 'Bloqueado') DEFAULT 'Activo', 
         FOREIGN KEY (personal_id) REFERENCES personal(id) ON DELETE SET NULL, 
         FOREIGN KEY (rol_id) REFERENCES cat_roles_sistema(id) ON DELETE RESTRICT
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS rebac_recursos (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nombre_recurso VARCHAR(60) NOT NULL UNIQUE,
+        descripcion VARCHAR(255) DEFAULT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS rebac_tipos_relacion (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        clave_relacion VARCHAR(40) NOT NULL UNIQUE,
+        descripcion VARCHAR(150) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS rebac_politicas_permisos (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        relacion_id INT NOT NULL,
+        recurso_id INT NOT NULL,
+        puede_crear TINYINT(1) NOT NULL DEFAULT 0,
+        puede_leer TINYINT(1) NOT NULL DEFAULT 0,
+        puede_editar TINYINT(1) NOT NULL DEFAULT 0,
+        puede_eliminar TINYINT(1) NOT NULL DEFAULT 0,
+        UNIQUE KEY uk_politica (relacion_id, recurso_id),
+        FOREIGN KEY (relacion_id) REFERENCES rebac_tipos_relacion(id) ON DELETE CASCADE,
+        FOREIGN KEY (recurso_id) REFERENCES rebac_recursos(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS rebac_tuplas_grafo (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        usuario_id INT NOT NULL,
+        relacion_id INT NOT NULL,
+        recurso_id INT NOT NULL,
+        objeto_id INT NOT NULL DEFAULT 0,
+        fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_tupla_grafo (usuario_id, relacion_id, recurso_id, objeto_id),
+        FOREIGN KEY (usuario_id) REFERENCES usuarios_sistema(id) ON DELETE CASCADE,
+        FOREIGN KEY (relacion_id) REFERENCES rebac_tipos_relacion(id) ON DELETE CASCADE,
+        FOREIGN KEY (recurso_id) REFERENCES rebac_recursos(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS sesiones_usuarios (
@@ -210,7 +272,9 @@ try {
         FOREIGN KEY (usuario_id) REFERENCES usuarios_sistema(id) ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-    // DATOS SEMILLA BASE
+    // =========================================================================
+    // 5. DATOS SEMILLA Y GARANTÍA DE ACCESO TOTAL PARA 'admin' (admin123)
+    // =========================================================================
     if ($pdo->query("SELECT COUNT(*) FROM cat_tipos_personal")->fetchColumn() == 0) {
         $pdo->exec("INSERT INTO cat_tipos_personal (id, nombre) VALUES (1, 'Docente'), (2, 'Administrativo'), (3, 'Obrero')");
         $pdo->exec("INSERT INTO cat_cargos_areas (tipo_personal_id, nombre, descripcion) VALUES 
@@ -219,10 +283,58 @@ try {
             (2, 'Director/a', 'Dirección e Inspección del Plantel'), 
             (2, 'Secretaria', 'Atención y Control de Expedientes'), 
             (3, 'Mantenimiento General', 'Mantenimiento de Planta Física')");
-        $pdo->exec("INSERT INTO cat_roles_sistema (id, nombre, nivel_acceso) VALUES (1, 'SuperAdministrador', 10)");
-        
+    }
+
+    if ($pdo->query("SELECT COUNT(*) FROM cat_tipos_documentos")->fetchColumn() == 0) {
+        $pdo->exec("INSERT INTO cat_tipos_documentos (id, clave, nombre) VALUES
+            (1, 'CED', 'Cédula de Identidad'), (2, 'FOT', 'Fotografía Tamaño Carnet'),
+            (3, 'TIT', 'Título Universitario o Certificado'), (4, 'MED', 'Informe o Certificado Médico'),
+            (5, 'SOP', 'Soporte de Justificación / Reposo'), (6, 'MEM', 'Memorándum o Acta Institucional'),
+            (7, 'OTR', 'Otro Soporte Digital')");
+    }
+
+    // Asegurar Rol SuperAdministrador
+    $pdo->exec("INSERT IGNORE INTO cat_roles_sistema (id, nombre, nivel_acceso) VALUES (1, 'SuperAdministrador', 10)");
+
+    // Asegurar Usuario 'admin' con contraseña 'admin123' y Rol 1
+    if ($pdo->query("SELECT COUNT(*) FROM usuarios_sistema WHERE username = 'admin'")->fetchColumn() == 0) {
         $hash = password_hash('admin123', PASSWORD_BCRYPT);
         $pdo->exec("INSERT INTO usuarios_sistema (id, rol_id, username, password_hash, estado) VALUES (1, 1, 'admin', '$hash', 'Activo')");
+    } else {
+        $pdo->exec("UPDATE usuarios_sistema SET rol_id = 1, estado = 'Activo' WHERE username = 'admin'");
+    }
+
+    // Poblar Recursos y Políticas ReBAC si faltan
+    $pdo->exec("INSERT IGNORE INTO rebac_recursos (id, nombre_recurso, descripcion) VALUES
+        (1, 'expediente_personal', 'Expediente digital y datos del trabajador'),
+        (2, 'asistencias', 'Control de asistencias y novedades'),
+        (3, 'organigrama', 'Árbol jerárquico y relaciones de mando'),
+        (4, 'documentos', 'Archivos y soportes institucionales'),
+        (5, 'cronograma', 'Eventos y agenda institucional'),
+        (6, 'configuracion', 'Catálogos, apariencia, respaldo e importación'),
+        (7, 'horarios', 'Calendario laboral de turnos'),
+        (8, 'auditoria', 'Historial y bitácora del sistema')");
+
+    $pdo->exec("INSERT IGNORE INTO rebac_tipos_relacion (id, clave_relacion, descripcion) VALUES
+        (1, 'superadministrador', 'Control total sin restricciones de objeto'),
+        (2, 'supervisor_directo', 'Jefe jerárquico según el organigrama'),
+        (3, 'propietario', 'El propio usuario es dueño del recurso/ficha'),
+        (4, 'coordinador_area', 'Gestor del departamento o especialidad'),
+        (5, 'lector', 'Permiso únicamente de consulta')");
+
+    // Políticas totales (1,1,1,1) para superadministrador en TODOS los 8 recursos
+    $pdo->exec("INSERT INTO rebac_politicas_permisos (relacion_id, recurso_id, puede_crear, puede_leer, puede_editar, puede_eliminar) VALUES
+        (1,1,1,1,1,1), (1,2,1,1,1,1), (1,3,1,1,1,1), (1,4,1,1,1,1),
+        (1,5,1,1,1,1), (1,6,1,1,1,1), (1,7,1,1,1,1), (1,8,1,1,1,1)
+        ON DUPLICATE KEY UPDATE puede_crear=1, puede_leer=1, puede_editar=1, puede_eliminar=1");
+
+    // Asignar al usuario 'admin' todas las tuplas ReBAC globales (objeto_id = 0)
+    $adminIdBD = $pdo->query("SELECT id FROM usuarios_sistema WHERE username = 'admin' LIMIT 1")->fetchColumn();
+    if ($adminIdBD) {
+        for ($recId = 1; $recId <= 8; $recId++) {
+            $pdo->prepare("INSERT IGNORE INTO rebac_tuplas_grafo (usuario_id, relacion_id, recurso_id, objeto_id) VALUES (?, 1, ?, 0)")
+                ->execute([$adminIdBD, $recId]);
+        }
     }
 
 } catch (PDOException $e) {
@@ -233,7 +345,9 @@ try {
          </div>");
 }
 
-// FUNCIONES AUXILIARES GLOBALES
+// =========================================================================
+// FUNCIONES AUXILIARES GLOBALES Y MOTOR ReBAC
+// =========================================================================
 function registrarHistorial($pdo, $tabla, $accion_str, $descripcion, $registro_id = null) {
     $usuario_id = $_SESSION['admin_id'] ?? null;
     $ip = $_SERVER['REMOTE_ADDR'] ?? null;
@@ -262,9 +376,6 @@ function formatearTelefono($telefono) {
     return '<a href="https://wa.me/' . $numeroLimpio . '" target="_blank" class="text-decoration-none text-body fw-medium"><span class="me-1 fs-5">' . $bandera . '</span>' . htmlspecialchars($tel) . '</a>';
 }
 
-// =========================================================================
-// MOTOR DE EVALUACIÓN ReBAC (RELATIONSHIP-BASED ACCESS CONTROL)
-// =========================================================================
 function tienePermisoReBAC($pdo, $usuario_id, $nombre_recurso, $accion = 'leer', $objeto_id = 0) {
     if (empty($usuario_id)) return false;
 
@@ -293,7 +404,7 @@ function tienePermisoReBAC($pdo, $usuario_id, $nombre_recurso, $accion = 'leer',
             return true;
         }
 
-        // 2. Evaluación dinámica por grafo jerárquico (Si es jefe directo en el organigrama)
+        // 2. Evaluación dinámica por grafo jerárquico (Organigrama)
         if ($objeto_id > 0 && in_array($nombre_recurso, ['asistencias', 'expediente_personal'])) {
             $sqlOrg = "
                 SELECT p.$columna
@@ -317,7 +428,22 @@ function tienePermisoReBAC($pdo, $usuario_id, $nombre_recurso, $accion = 'leer',
     return false;
 }
 
-// Helper rápido para obtener el Rol y las Relaciones ReBAC del usuario actual
+// Protector rápido de páginas completas
+function exigirPermisoReBAC($pdo, $nombre_recurso, $accion = 'leer', $objeto_id = 0) {
+    $uid = $_SESSION['admin_id'] ?? 0;
+    if (!tienePermisoReBAC($pdo, $uid, $nombre_recurso, $accion, $objeto_id)) {
+        include '../Includes/header.php';
+        include '../Includes/sidebar.php';
+        echo '<div class="alert alert-danger shadow-sm p-4 text-center rounded-4 mt-5">
+                <i class="bi bi-shield-lock-fill fs-1 d-block mb-2"></i>
+                <h4>Acceso Denegado por ReBAC</h4>
+                <p class="mb-0">No cuentas con relación autorizada para <strong>' . htmlspecialchars($accion) . '</strong> en el módulo <strong>' . htmlspecialchars($nombre_recurso) . '</strong>.</p>
+              </div>';
+        include '../Includes/footer.php';
+        exit;
+    }
+}
+
 function obtenerPerfilSeguridad($pdo, $usuario_id) {
     $stmt = $pdo->prepare("
         SELECT u.username, r.nombre as rol_nombre, r.nivel_acceso,

@@ -16,6 +16,7 @@ $tipoActual = $_GET['tipo'] ?? ''; // Para iluminar el menú correcto
         <a href="calendario.php" class="menu-link <?= ($paginaActual == 'calendario.php') ? 'active' : ''; ?>"><i class="bi bi-calendar3 me-3"></i>Calendario Laboral</a>
         <a href="asistencias.php" class="menu-link <?= ($paginaActual == 'asistencias.php') ? 'active' : ''; ?>"><i class="bi bi-person-x me-3"></i>Control Asistencias</a>
         <a href="cronograma.php" class="menu-link <?= ($paginaActual == 'cronograma.php') ? 'active' : ''; ?>"><i class="bi bi-calendar-event me-3"></i>Cronograma</a>
+        <a href="documentos.php" class="menu-link <?= ($paginaActual == 'documentos.php') ? 'active' : ''; ?>"><i class="bi bi-folder2-open me-3"></i>Documentos</a>
         <a href="historial.php" class="menu-link <?= ($paginaActual == 'historial.php') ? 'active' : ''; ?>"><i class="bi bi-clock-history me-3"></i>Auditoría</a>
     </div>
 </div>
