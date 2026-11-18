@@ -22,8 +22,22 @@ $tipoActual = $_GET['tipo'] ?? ''; // Para iluminar el menú correcto
 </div>
 <!-- RESTO DE TU SIDEBAR HTML (Navbar superior, Ajustes, etc.) QUEDA IGUAL -->
         <div id="page-content-wrapper">
-            <nav class="navbar navbar-expand-lg navbar-top px-4 py-3 d-flex justify-content-between align-items-center">
+            <nav class="navbar navbar-expand-lg navbar-top px-4 py-2 d-flex justify-content-between align-items-center gap-3">
                 <button class="btn btn-outline-secondary shadow-sm" id="menu-toggle"><i class="bi bi-list fs-5"></i></button>
+                
+                <!-- BARRA DE BÚSQUEDA AVANZADA EN NAVBAR -->
+                <div class="position-relative flex-grow-1 mx-2" style="max-width: 480px;" id="navSearchContainer">
+                    <div class="input-group shadow-sm">
+                        <span class="input-group-text bg-body-tertiary border-end-0 text-primary"><i class="bi bi-search"></i></span>
+                        <input type="text" id="navSearchInput" class="form-control bg-body-tertiary border-start-0 border-end-0 shadow-none" placeholder="Buscar cédula, nombre, archivo, evento... (Ctrl+K)" autocomplete="off">
+                        <button class="btn btn-body-tertiary border border-start-0 text-primary fw-bold" type="button" onclick="abrirModalBusquedaAvanzada()" title="Búsqueda Avanzada con Filtros">
+                            <i class="bi bi-sliders"></i>
+                        </button>
+                    </div>
+                    <!-- Resultados instantáneos desplegables -->
+                    <div id="navSearchDropdown" class="list-group position-absolute w-100 shadow-lg d-none mt-1" style="z-index: 1080; max-height: 400px; overflow-y: auto;"></div>
+                </div>
+
                 <div class="d-flex align-items-center ms-auto">
                     <a href="configuracion.php" class="btn btn-light rounded-circle shadow-sm me-3 border text-secondary" style="width: 42px; height: 42px; display: flex; align-items: center; justify-content: center;"><i class="bi bi-gear-fill fs-5"></i></a>
                     <div class="dropdown">
@@ -36,4 +50,5 @@ $tipoActual = $_GET['tipo'] ?? ''; // Para iluminar el menú correcto
                     </div>
                 </div>
             </nav>
+            <?php include_once __DIR__ . '/buscador_avanzado.php'; ?>
             <div class="container-fluid p-4">

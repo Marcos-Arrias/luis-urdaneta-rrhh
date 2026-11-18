@@ -84,7 +84,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $registro_id = intval($_POST['registro_id'] ?? 0);
             $notas = trim($_POST['notas'] ?? '');
 
-            // Validar extensión
+            if ($tabla_destino !== 'institucional' && $registro_id <= 0) {
+                header("Location: documentos.php?msg=err_destino"); exit;
+            }
+
             $nombreOrig = $_FILES['archivo']['name'];
             $ext = strtolower(pathinfo($nombreOrig, PATHINFO_EXTENSION));
             $permitidos = ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'];
@@ -92,19 +95,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header("Location: documentos.php?msg=err_ext"); exit;
             }
 
-            // Obtener clave del tipo (ej: MEM, CED)
             $stmtT = $pdo->prepare("SELECT clave FROM cat_tipos_documentos WHERE id = ?");
             $stmtT->execute([$tipo_id]);
             $clave = $stmtT->fetchColumn() ?: 'OTR';
 
-            // Crear carpeta si no existe
             $dir = '../documentos/';
             if (!file_exists($dir)) mkdir($dir, 0777, true);
 
             $codigo = sprintf("DOC_%s_%s_%03d.%s", $clave, date('Ymd_His'), rand(100, 999), $ext);
             $rutaFinal = $dir . $codigo;
 
-            // Calcular tamaño y hash SHA-256 antes/después de mover
             $tamano = $_FILES['archivo']['size'];
             $mime = $_FILES['archivo']['type'] ?: mime_content_type($_FILES['archivo']['tmp_name']);
             $hash = hash_file('sha256', $_FILES['archivo']['tmp_name']);
@@ -115,7 +115,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmtDoc->execute([$tipo_id, $codigo, $nombreOrig, $rutaFinal, $mime, $tamano, $hash]);
                 $docId = $pdo->lastInsertId();
 
-                // Vincular en documentos_enlaces
                 if ($tabla_destino === 'institucional') $registro_id = 0;
                 $pdo->prepare("INSERT INTO documentos_enlaces (documento_id, tabla_destino, registro_id, notas) VALUES (?, ?, ?, ?)")
                     ->execute([$docId, $tabla_destino, $registro_id, $notas]);
@@ -126,14 +125,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // B. VINCULAR DOCUMENTO EXISTENTE A OTRO REGISTRO (FLEXIBILIDAD)
+        // B. VINCULAR DOCUMENTO EXISTENTE A OTRO REGISTRO
         elseif ($accion === 'vincular_extra') {
             if (!$puedeEditar) die("Sin permiso ReBAC para editar vínculos.");
             
             $docId = intval($_POST['documento_id']);
             $tabla_destino = $_POST['tabla_destino'];
-            $registro_id = ($tabla_destino === 'institucional') ? 0 : intval($_POST['registro_id']);
+            $registro_id = ($tabla_destino === 'institucional') ? 0 : intval($_POST['registro_id'] ?? 0);
             $notas = trim($_POST['notas'] ?? '');
+
+            if ($tabla_destino !== 'institucional' && $registro_id <= 0) {
+                header("Location: documentos.php?msg=err_destino"); exit;
+            }
 
             $pdo->prepare("INSERT INTO documentos_enlaces (documento_id, tabla_destino, registro_id, notas) VALUES (?, ?, ?, ?)")
                 ->execute([$docId, $tabla_destino, $registro_id, $notas]);
@@ -175,7 +178,6 @@ $documentos = $pdo->query("
     ORDER BY d.fecha_subida DESC
 ")->fetchAll();
 
-// Obtener todos los enlaces y resolver sus nombres legibles
 $enlacesRaw = $pdo->query("
     SELECT de.*, 
            CONCAT(p.apellidos, ', ', p.nombres, ' (V-', p.cedula, ')') as nombre_personal,
@@ -202,12 +204,8 @@ foreach ($documentos as $idx => $doc) {
 }
 $tamanoMB = number_format($totalBytes / 1048576, 2);
 
-// Listas para selects de asociación
 $tiposDoc = $pdo->query("SELECT * FROM cat_tipos_documentos ORDER BY clave ASC")->fetchAll();
-$listaPersonal = $pdo->query("SELECT id, cedula, CONCAT(apellidos, ', ', nombres) as nombre FROM personal ORDER BY apellidos ASC")->fetchAll();
 $listaEventos = $pdo->query("SELECT id, titulo, fecha FROM cronograma_eventos ORDER BY fecha DESC LIMIT 50")->fetchAll();
-
-// Perfil de Seguridad ReBAC actual (para mostrar badge informativo)
 $perfilSeguridad = obtenerPerfilSeguridad($pdo, $usuario_actual_id);
 
 include '../Includes/header.php';
@@ -243,7 +241,8 @@ include '../Includes/sidebar.php';
         'vinculado'   => ['info', 'Se asoció un nuevo vínculo al documento.'],
         'eliminado'   => ['danger', 'Documento eliminado del servidor y de la base de datos.'],
         'err_archivo' => ['warning', 'Debe seleccionar un archivo válido.'],
-        'err_ext'     => ['danger', 'Extensión de archivo no permitida por seguridad.']
+        'err_ext'     => ['danger', 'Extensión de archivo no permitida por seguridad.'],
+        'err_destino' => ['warning', 'Debes seleccionar un trabajador o evento de la lista para poder vincularlo.']
     ];
     if (isset($msgs[$_GET['msg']])): $m = $msgs[$_GET['msg']]; ?>
         <div class="alert alert-<?= $m[0] ?> alert-dismissible fade show shadow-sm py-2">
@@ -281,14 +280,14 @@ include '../Includes/sidebar.php';
     </div>
 </div>
 
-<!-- BARRA DE BÚSQUEDA Y FILTROS ERGONÓMICA -->
+<!-- BARRA DE BÚSQUEDA Y FILTROS HORIZONTAL -->
 <div class="card shadow-sm border-0 rounded-4 mb-4 bg-body-tertiary">
     <div class="card-body p-3">
         <div class="row g-2 align-items-center">
             <div class="col-md-5">
                 <div class="input-group">
                     <span class="input-group-text bg-body border-0"><i class="bi bi-search text-primary"></i></span>
-                    <input type="text" id="buscadorDocs" class="form-control border-0 shadow-none" placeholder="Buscar por código, nombre, persona o evento..." autofocus>
+                    <input type="text" id="buscadorDocs" class="form-control border-0 shadow-none" value="<?= htmlspecialchars($_GET['q'] ?? '') ?>" placeholder="Buscar por código, nombre, persona o evento..." autofocus>
                 </div>
             </div>
             <div class="col-md-3">
@@ -386,26 +385,22 @@ include '../Includes/sidebar.php';
                             <small><?= date('h:i A', strtotime($d['fecha_subida'])) ?></small>
                         </td>
                         <td class="text-center text-nowrap">
-                            <!-- BOTÓN PREVISUALIZAR -->
                             <?php if ($esImagen || $esPdf): ?>
                                 <button class="btn btn-sm btn-light text-info shadow-sm rounded-circle me-1" onclick="previsualizarArchivo('<?= $d['ruta_archivo'] ?>', '<?= htmlspecialchars($d['nombre_original'], ENT_QUOTES) ?>', '<?= $d['mime_type'] ?>')" title="Vista Previa">
                                     <i class="bi bi-eye-fill"></i>
                                 </button>
                             <?php endif; ?>
                             
-                            <!-- BOTÓN DESCARGAR -->
                             <a href="<?= $d['ruta_archivo'] ?>" download="<?= htmlspecialchars($d['nombre_original']) ?>" class="btn btn-sm btn-light text-primary shadow-sm rounded-circle me-1" title="Descargar">
                                 <i class="bi bi-download"></i>
                             </a>
 
-                            <!-- BOTÓN AGREGAR VÍNCULO EXTRA -->
                             <?php if ($puedeEditar): ?>
                                 <button class="btn btn-sm btn-light text-success shadow-sm rounded-circle me-1" onclick="abrirModalVincular(<?= $d['id'] ?>, '<?= htmlspecialchars($d['nombre_original'], ENT_QUOTES) ?>')" title="Vincular a otra entidad">
                                     <i class="bi bi-link-45deg"></i>
                                 </button>
                             <?php endif; ?>
 
-                            <!-- BOTÓN ELIMINAR -->
                             <?php if ($puedeEliminar): ?>
                                 <form action="" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar este archivo permanentemente del disco duro y base de datos?');">
                                     <input type="hidden" name="accion" value="eliminar_documento">
@@ -425,131 +420,119 @@ include '../Includes/sidebar.php';
 </div>
 
 <!-- ========================================================= -->
-<!-- MODAL 1: SUBIR NUEVO ARCHIVO FLEXIBLE -->
+<!-- MODAL 1: SUBIR NUEVO ARCHIVO (CON FORM COMO MODAL-CONTENT) -->
 <!-- ========================================================= -->
 <div class="modal fade" id="modalSubirDoc" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg">
+        <form action="" method="POST" enctype="multipart/form-data" class="modal-content border-0 shadow-lg w-100" id="formSubirDoc">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title fw-bold"><i class="bi bi-cloud-upload me-2"></i>Subir Documento al Repositorio</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <form action="" method="POST" enctype="multipart/form-data">
-                <div class="modal-body bg-body-tertiary">
-                    <input type="hidden" name="accion" value="subir_documento">
+            <div class="modal-body bg-body-tertiary">
+                <input type="hidden" name="accion" value="subir_documento">
 
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">1. Archivo (PDF, Imágenes, Word, Excel)</label>
-                        <input type="file" name="archivo" class="form-control shadow-sm" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx" required>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">2. Categoría Documental</label>
-                        <select name="tipo_documento_id" class="form-select shadow-sm" required>
-                            <?php foreach ($tiposDoc as $t): ?>
-                                <option value="<?= $t['id'] ?>"><?= $t['clave'] ?> - <?= htmlspecialchars($t['nombre']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">3. Ámbito o Vinculación Inicial</label>
-                        <select name="tabla_destino" id="subir_destino" class="form-select shadow-sm" onchange="toggleDestinoSubir()" required>
-                            <option value="institucional">🏛️ Archivo Institucional / Independiente (Sin vínculo)</option>
-                            <option value="personal">👤 Vincular a un Trabajador</option>
-                            <option value="cronograma_eventos">📅 Vincular a un Evento del Cronograma</option>
-                        </select>
-                    </div>
-
-                    <!-- SELECTOR DINÁMICO DE PERSONAL -->
-                    <div class="mb-3 d-none" id="div_subir_personal">
-                        <label class="form-label small fw-bold text-primary">Seleccionar Trabajador:</label>
-                        <select name="registro_id" id="sel_subir_personal" class="form-select border-primary" disabled>
-                            <?php foreach ($listaPersonal as $p): ?>
-                                <option value="<?= $p['id'] ?>">V-<?= $p['cedula'] ?> | <?= htmlspecialchars($p['nombre']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <!-- SELECTOR DINÁMICO DE EVENTO -->
-                    <div class="mb-3 d-none" id="div_subir_evento">
-                        <label class="form-label small fw-bold text-warning-emphasis">Seleccionar Evento:</label>
-                        <select name="registro_id" id="sel_subir_evento" class="form-select border-warning" disabled>
-                            <?php foreach ($listaEventos as $ev): ?>
-                                <option value="<?= $ev['id'] ?>"><?= date('d/m/Y', strtotime($ev['fecha'])) ?> - <?= htmlspecialchars($ev['titulo']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <div class="mb-2">
-                        <label class="form-label small fw-bold">Notas / Descripción (Opcional)</label>
-                        <input type="text" name="notas" class="form-control form-control-sm" placeholder="Ej: Acta firmada por consejo docente...">
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">1. Archivo (PDF, Imágenes, Word, Excel)</label>
+                    <input type="file" name="archivo" class="form-control shadow-sm" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx" required>
                 </div>
-                <div class="modal-footer border-0">
-                    <button type="submit" class="btn btn-primary w-100 fw-bold">Guardar y Sellar con SHA-256</button>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">2. Categoría Documental</label>
+                    <select name="tipo_documento_id" class="form-select shadow-sm" required>
+                        <?php foreach ($tiposDoc as $t): ?>
+                            <option value="<?= $t['id'] ?>"><?= $t['clave'] ?> - <?= htmlspecialchars($t['nombre']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
-            </form>
-        </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">3. Ámbito o Vinculación Inicial</label>
+                    <select name="tabla_destino" id="subir_destino" class="form-select shadow-sm" onchange="toggleDestinoSubir()" required>
+                        <option value="institucional">🏛️ Archivo Institucional / Independiente (Sin vínculo)</option>
+                        <option value="personal">👤 Vincular a un Trabajador</option>
+                        <option value="cronograma_eventos">📅 Vincular a un Evento del Cronograma</option>
+                    </select>
+                </div>
+
+                <!-- BUSCADOR IMPORTABLE DE PERSONAL -->
+                <div class="mb-3 d-none" id="div_subir_personal">
+                    <label class="form-label small fw-bold text-primary">Seleccionar Trabajador:</label>
+                    <?php renderBuscadorTrabajador('sel_subir_personal', 'registro_id', 'Cédula, nombre, apellido o cargo...'); ?>
+                </div>
+
+                <!-- SELECTOR DE EVENTO -->
+                <div class="mb-3 d-none" id="div_subir_evento">
+                    <label class="form-label small fw-bold text-warning-emphasis">Seleccionar Evento:</label>
+                    <select name="registro_id" id="sel_subir_evento" class="form-select border-warning" disabled>
+                        <?php foreach ($listaEventos as $ev): ?>
+                            <option value="<?= $ev['id'] ?>"><?= date('d/m/Y', strtotime($ev['fecha'])) ?> - <?= htmlspecialchars($ev['titulo']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="mb-2">
+                    <label class="form-label small fw-bold">Notas / Descripción (Opcional)</label>
+                    <input type="text" name="notas" class="form-control form-control-sm" placeholder="Ej: Acta firmada por consejo docente...">
+                </div>
+            </div>
+            <div class="modal-footer border-0 bg-body">
+                <button type="submit" class="btn btn-primary w-100 fw-bold">Guardar y Sellar con SHA-256</button>
+            </div>
+        </form>
     </div>
 </div>
 
 <!-- ========================================================= -->
-<!-- MODAL 2: VINCULAR DOCUMENTO EXISTENTE A OTRA ENTIDAD -->
+<!-- MODAL 2: VINCULAR DOCUMENTO EXISTENTE (ANCHO CÓMODO)      -->
 <!-- ========================================================= -->
 <div class="modal fade" id="modalVincularExtra" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header bg-success text-white py-2">
-                <h6 class="modal-title fw-bold"><i class="bi bi-link-45deg me-1"></i>Añadir Vínculo</h6>
+    <div class="modal-dialog modal-dialog-centered">
+        <form action="" method="POST" class="modal-content border-0 shadow-lg w-100" id="formVincularExtra">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title fw-bold"><i class="bi bi-link-45deg me-1"></i>Añadir Vínculo a Documento</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <form action="" method="POST">
-                <div class="modal-body bg-body-tertiary">
-                    <input type="hidden" name="accion" value="vincular_extra">
-                    <input type="hidden" name="documento_id" id="vinc_doc_id">
-                    <p class="small fw-bold text-center text-success mb-3" id="vinc_doc_nombre"></p>
+            <div class="modal-body bg-body-tertiary">
+                <input type="hidden" name="accion" value="vincular_extra">
+                <input type="hidden" name="documento_id" id="vinc_doc_id">
+                <p class="small fw-bold text-center text-success mb-3 text-truncate" id="vinc_doc_nombre"></p>
 
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">Tipo de Entidad:</label>
-                        <select name="tabla_destino" id="vinc_destino" class="form-select form-select-sm" onchange="toggleDestinoVincular()">
-                            <option value="personal">👤 Trabajador</option>
-                            <option value="cronograma_eventos">📅 Evento del Cronograma</option>
-                        </select>
-                    </div>
-
-                    <div class="mb-3" id="div_vinc_personal">
-                        <label class="form-label small fw-bold">Trabajador:</label>
-                        <select name="registro_id" id="sel_vinc_personal" class="form-select form-select-sm">
-                            <?php foreach ($listaPersonal as $p): ?>
-                                <option value="<?= $p['id'] ?>">V-<?= $p['cedula'] ?> | <?= htmlspecialchars($p['nombre']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <div class="mb-3 d-none" id="div_vinc_evento">
-                        <label class="form-label small fw-bold">Evento:</label>
-                        <select name="registro_id" id="sel_vinc_evento" class="form-select form-select-sm" disabled>
-                            <?php foreach ($listaEventos as $ev): ?>
-                                <option value="<?= $ev['id'] ?>"><?= date('d/m/Y', strtotime($ev['fecha'])) ?> - <?= htmlspecialchars($ev['titulo']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Tipo de Entidad:</label>
+                    <select name="tabla_destino" id="vinc_destino" class="form-select shadow-sm" onchange="toggleDestinoVincular()">
+                        <option value="personal">👤 Trabajador</option>
+                        <option value="cronograma_eventos">📅 Evento del Cronograma</option>
+                    </select>
                 </div>
-                <div class="modal-footer border-0 p-2">
-                    <button type="submit" class="btn btn-success btn-sm w-100 fw-bold">Asociar Vínculo</button>
+
+                <div class="mb-3" id="div_vinc_personal">
+                    <label class="form-label small fw-bold text-primary">Buscar Trabajador:</label>
+                    <?php renderBuscadorTrabajador('sel_vinc_personal', 'registro_id', 'Cédula, nombre, apellido o cargo...'); ?>
                 </div>
-            </form>
-        </div>
+
+                <div class="mb-3 d-none" id="div_vinc_evento">
+                    <label class="form-label small fw-bold text-warning-emphasis">Evento:</label>
+                    <select name="registro_id" id="sel_vinc_evento" class="form-select border-warning" disabled>
+                        <?php foreach ($listaEventos as $ev): ?>
+                            <option value="<?= $ev['id'] ?>"><?= date('d/m/Y', strtotime($ev['fecha'])) ?> - <?= htmlspecialchars($ev['titulo']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer border-0 bg-body">
+                <button type="submit" class="btn btn-success w-100 fw-bold">Asociar Vínculo</button>
+            </div>
+        </form>
     </div>
 </div>
 
 <!-- ========================================================= -->
-<!-- MODAL 3: VISOR INTEGRADO (IMÁGENES Y PDF OFFLINE) -->
+<!-- MODAL 3: VISOR INTEGRADO (IMÁGENES Y PDF OFFLINE)         -->
 <!-- ========================================================= -->
 <div class="modal fade" id="modalPrevisualizar" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg">
+        <div class="modal-content border-0 shadow-lg w-100">
             <div class="modal-header bg-dark text-white py-2">
                 <h6 class="modal-title fw-bold" id="prevTitulo">Vista Previa</h6>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -569,11 +552,11 @@ function toggleDestinoSubir() {
     let divE = document.getElementById('div_subir_evento');
     let selE = document.getElementById('sel_subir_evento');
 
-    divP.classList.add('d-none'); selP.disabled = true;
-    divE.classList.add('d-none'); selE.disabled = true;
+    divP.classList.add('d-none'); if(selP) selP.disabled = true;
+    divE.classList.add('d-none'); if(selE) selE.disabled = true;
 
-    if (val === 'personal') { divP.classList.remove('d-none'); selP.disabled = false; }
-    if (val === 'cronograma_eventos') { divE.classList.remove('d-none'); selE.disabled = false; }
+    if (val === 'personal') { divP.classList.remove('d-none'); if(selP) selP.disabled = false; }
+    if (val === 'cronograma_eventos') { divE.classList.remove('d-none'); if(selE) selE.disabled = false; }
 }
 
 // Toggle de selects en Vínculo Extra
@@ -584,16 +567,31 @@ function toggleDestinoVincular() {
     let divE = document.getElementById('div_vinc_evento');
     let selE = document.getElementById('sel_vinc_evento');
 
-    divP.classList.add('d-none'); selP.disabled = true;
-    divE.classList.add('d-none'); selE.disabled = true;
+    divP.classList.add('d-none'); if(selP) selP.disabled = true;
+    divE.classList.add('d-none'); if(selE) selE.disabled = true;
 
-    if (val === 'personal') { divP.classList.remove('d-none'); selP.disabled = false; }
-    if (val === 'cronograma_eventos') { divE.classList.remove('d-none'); selE.disabled = false; }
+    if (val === 'personal') { divP.classList.remove('d-none'); if(selP) selP.disabled = false; }
+    if (val === 'cronograma_eventos') { divE.classList.remove('d-none'); if(selE) selE.disabled = false; }
 }
+
+// Validación ergonómica antes de enviar para que no envíen trabajador vacío
+document.getElementById('formSubirDoc')?.addEventListener('submit', function(e) {
+    if (document.getElementById('subir_destino').value === 'personal' && !document.getElementById('sel_subir_personal').value) {
+        e.preventDefault();
+        alert('Por favor busca y haz clic sobre un trabajador de la lista desplegable.');
+    }
+});
+document.getElementById('formVincularExtra')?.addEventListener('submit', function(e) {
+    if (document.getElementById('vinc_destino').value === 'personal' && !document.getElementById('sel_vinc_personal').value) {
+        e.preventDefault();
+        alert('Por favor busca y haz clic sobre un trabajador de la lista desplegable.');
+    }
+});
 
 function abrirModalVincular(docId, docNombre) {
     document.getElementById('vinc_doc_id').value = docId;
     document.getElementById('vinc_doc_nombre').innerText = docNombre;
+    toggleDestinoVincular();
     new bootstrap.Modal(document.getElementById('modalVincularExtra')).show();
 }
 
@@ -608,7 +606,6 @@ function previsualizarArchivo(ruta, titulo, mime) {
     new bootstrap.Modal(document.getElementById('modalPrevisualizar')).show();
 }
 
-// Filtros ergonómicos en vivo
 function aplicarFiltrosDocs() {
     let txt = document.getElementById('buscadorDocs').value.toLowerCase();
     let tipo = document.getElementById('filtroTipoDoc').value;
@@ -626,6 +623,14 @@ function aplicarFiltrosDocs() {
 document.getElementById('buscadorDocs').addEventListener('input', aplicarFiltrosDocs);
 document.getElementById('filtroTipoDoc').addEventListener('change', aplicarFiltrosDocs);
 document.getElementById('filtroEntidadDoc').addEventListener('change', aplicarFiltrosDocs);
+
+document.addEventListener('DOMContentLoaded', () => {
+    toggleDestinoSubir();
+    toggleDestinoVincular();
+    if (document.getElementById('buscadorDocs').value.trim() !== '') {
+        aplicarFiltrosDocs();
+    }
+});
 </script>
 
 <?php include '../Includes/footer.php'; ?>
