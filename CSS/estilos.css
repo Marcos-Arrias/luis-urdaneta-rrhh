@@ -1,0 +1,464 @@
+/* =========================================================================
+   ESTILOS GLOBALES - PORTAL RRHH U.E.N LUIS URDANETA
+   ========================================================================= */
+:root {
+    --radio: 1rem;
+    --radio-sm: 0.65rem;
+    --sombra: 0 4px 18px rgba(0, 0, 0, 0.06);
+    --sombra-hover: 0 10px 28px rgba(0, 0, 0, 0.12);
+    --color-sidebar: linear-gradient(180deg, #1e3c72 0%, #2a5298 100%);
+    --sidebar-ancho: 260px;
+    --sidebar-mini: 76px;
+    --fuente-sistema: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+[data-bs-theme="dark"] {
+    --sombra: 0 4px 20px rgba(0, 0, 0, 0.35);
+    --sombra-hover: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Base tipográfica y layout */
+body {
+    margin: 0;
+    font-family: var(--fuente-sistema);
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    transition: background 0.3s ease;
+    overflow-x: hidden;
+}
+
+#wrapper {
+    display: flex;
+    width: 100%;
+    min-height: 100vh;
+}
+
+@media (min-width: 992px) {
+    #wrapper {
+        height: 100dvh;
+        overflow: hidden;
+    }
+    #page-content-wrapper {
+        overflow-y: auto;
+    }
+}
+
+#page-content-wrapper {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    transition: all 0.25s ease;
+}
+
+/* Consistencia global en tarjetas y botones */
+.card {
+    border-radius: var(--radio) !important;
+    box-shadow: var(--sombra);
+}
+
+.dash-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.dash-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--sombra-hover) !important;
+}
+
+/* Efecto cristal automático cuando hay wallpaper de fondo */
+body.has-wallpaper .card,
+body.has-wallpaper .navbar-top,
+body.has-wallpaper .modal-content {
+    background-color: rgba(var(--bs-body-bg-rgb), 0.86) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+/* Corrección global de Modo Oscuro para clases claras heredadas */
+[data-bs-theme="dark"] .table-light,
+[data-bs-theme="dark"] .table-light > tr,
+[data-bs-theme="dark"] .table-light > tr > th {
+    --bs-table-bg: var(--bs-tertiary-bg);
+    --bs-table-color: var(--bs-body-color);
+    background-color: var(--bs-tertiary-bg) !important;
+    color: var(--bs-body-color) !important;
+    border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .btn-light {
+    background-color: var(--bs-tertiary-bg) !important;
+    border-color: var(--bs-border-color) !important;
+    color: var(--bs-body-color) !important;
+}
+[data-bs-theme="dark"] .btn-light:hover {
+    background-color: var(--bs-secondary-bg) !important;
+}
+
+.btn-icon-theme {
+    background-color: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
+    color: var(--bs-body-color);
+    transition: all 0.2s ease;
+}
+.btn-icon-theme:hover {
+    background-color: var(--bs-secondary-bg);
+    color: var(--bs-primary);
+}
+
+/* =========================================================================
+   SIDEBAR RESPONSIVO (OFFCANVAS < 992px / COLAPSABLE ICONOS >= 992px)
+   ========================================================================= */
+#sidebar-wrapper {
+    background: var(--color-sidebar);
+    color: #fff;
+    transition: width 0.25s ease;
+}
+
+@media (min-width: 992px) {
+    #sidebar-wrapper {
+        width: var(--sidebar-ancho);
+        flex-shrink: 0;
+        display: flex !important;
+        flex-direction: column;
+        height: 100dvh;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    #wrapper.sidebar-collapsed #sidebar-wrapper {
+        width: var(--sidebar-mini);
+    }
+
+    #wrapper.sidebar-collapsed .sidebar-text,
+    #wrapper.sidebar-collapsed .sidebar-section-title {
+        display: none !important;
+    }
+
+    #wrapper.sidebar-collapsed .sidebar-heading {
+        padding: 1.25rem 0.5rem;
+        justify-content: center;
+    }
+
+    #wrapper.sidebar-collapsed .menu-link {
+        justify-content: center;
+        padding: 12px 0;
+        margin-right: 0;
+        border-radius: 0;
+    }
+
+    #wrapper.sidebar-collapsed .menu-link i {
+        margin-right: 0 !important;
+        font-size: 1.25rem;
+    }
+}
+
+.sidebar-heading {
+    padding: 1.2rem 1.25rem;
+    font-size: 1.05rem;
+    color: #fff;
+    font-weight: 700;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.sidebar-section-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.1px;
+    color: rgba(255, 255, 255, 0.5);
+    padding: 0.85rem 1.25rem 0.25rem;
+}
+
+.menu-link {
+    color: rgba(255, 255, 255, 0.85);
+    padding: 10px 20px;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    transition: 0.2s;
+    font-weight: 500;
+    font-size: 0.94rem;
+    white-space: nowrap;
+}
+
+.menu-link:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.menu-link.active {
+    background-color: rgba(0, 0, 0, 0.26);
+    color: #fff;
+    border-radius: 0 25px 25px 0;
+    margin-right: 12px;
+    border-left: 4px solid #fff;
+    font-weight: 600;
+}
+
+/* Navbar superior */
+.navbar-top {
+    background-color: var(--bs-body-bg);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+    z-index: 1020;
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+/* Avatares, círculos de iconos y ordenamiento de tablas */
+.avatar-thumb {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 2px solid var(--bs-primary);
+    transition: transform 0.2s;
+}
+
+.icon-circle {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+th.sortable { cursor: pointer; user-select: none; position: relative; padding-right: 20px !important; }
+th.sortable:hover { background-color: rgba(var(--bs-primary-rgb), 0.06) !important; }
+th.sortable::after { content: '↕'; position: absolute; right: 8px; opacity: 0.3; }
+th.sortable.asc::after { content: '↑'; opacity: 1; color: var(--bs-primary); }
+th.sortable.desc::after { content: '↓'; opacity: 1; color: var(--bs-primary); }
+th[draggable="true"] { cursor: grab; }
+th[draggable="true"]:active { cursor: grabbing; }
+tr.selected { background-color: rgba(var(--bs-primary-rgb), 0.12) !important; }
+
+#bulk-toolbar {
+    position: fixed;
+    bottom: -100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--bs-dark);
+    color: #fff;
+    border-radius: 50px;
+    padding: 12px 25px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    z-index: 1050;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+#bulk-toolbar.show { bottom: 30px; }
+
+/* =========================================================================
+   TRANSICIÓN ANIMADA SOL <-> LUNA Y NUEVAS OPCIONES DE APARIENCIA
+   ========================================================================= */
+.theme-icon-stage {
+    position: relative;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
+    transition: background-color 0.4s ease, box-shadow 0.4s ease, border-color 0.4s ease;
+}
+.theme-icon-sun,
+.theme-icon-moon {
+    position: absolute;
+    font-size: 2rem;
+    transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease;
+}
+.theme-icon-sun {
+    color: #f59e0b;
+    filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.45));
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+}
+.theme-icon-moon {
+    color: #93c5fd;
+    filter: drop-shadow(0 0 10px rgba(147, 197, 253, 0.6));
+    opacity: 0;
+    transform: rotate(-135deg) scale(0.35);
+}
+[data-bs-theme="dark"] .theme-icon-stage {
+    background: rgba(30, 58, 138, 0.35);
+    border-color: rgba(147, 197, 253, 0.35);
+    box-shadow: 0 0 18px rgba(147, 197, 253, 0.25);
+}
+[data-bs-theme="dark"] .theme-icon-sun {
+    opacity: 0;
+    transform: rotate(135deg) scale(0.35);
+}
+[data-bs-theme="dark"] .theme-icon-moon {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+}
+
+/* Estilos de Contenedores (3D / 2D / Cristal) */
+body.cards-shadow .card {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.09) !important;
+}
+[data-bs-theme="dark"] body.cards-shadow .card {
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.48) !important;
+}
+
+body.cards-flat .card,
+body.cards-flat .shadow,
+body.cards-flat .shadow-sm,
+body.cards-flat .shadow-lg {
+    box-shadow: none !important;
+}
+body.cards-flat .card {
+    border: 1px solid var(--bs-border-color) !important;
+}
+body.cards-flat .card.border-4.border-start { border-left-width: 4px !important; }
+body.cards-flat .card.border-4.border-top { border-top-width: 4px !important; }
+body.cards-flat .card.border-4.border-bottom { border-bottom-width: 4px !important; }
+body.cards-flat .card.border-primary { border-color: var(--bs-primary) !important; }
+body.cards-flat .card.border-success { border-color: var(--bs-success) !important; }
+body.cards-flat .card.border-warning { border-color: var(--bs-warning) !important; }
+body.cards-flat .card.border-danger  { border-color: var(--bs-danger) !important; }
+body.cards-flat .card.border-info    { border-color: var(--bs-info) !important; }
+body.cards-flat .dash-card:hover { transform: none !important; }
+
+body.cards-glass .card,
+body.cards-glass .navbar-top,
+body.cards-glass .modal-content {
+    background-color: rgba(var(--bs-body-bg-rgb), 0.72) !important;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(var(--bs-emphasis-color-rgb), 0.12) !important;
+}
+
+/* Color de Acento Global Dinámico */
+body.custom-accent {
+    --bs-primary: var(--accent-color);
+    --bs-primary-rgb: var(--accent-rgb);
+    --bs-link-color: var(--accent-color);
+}
+body.custom-accent .btn-primary {
+    --bs-btn-bg: var(--accent-color);
+    --bs-btn-border-color: var(--accent-color);
+    --bs-btn-hover-bg: var(--accent-hover);
+    --bs-btn-hover-border-color: var(--accent-hover);
+    --bs-btn-active-bg: var(--accent-hover);
+}
+body.custom-accent .btn-outline-primary {
+    --bs-btn-color: var(--accent-color);
+    --bs-btn-border-color: var(--accent-color);
+    --bs-btn-hover-bg: var(--accent-color);
+    --bs-btn-hover-border-color: var(--accent-color);
+}
+body.custom-accent .nav-pills .nav-link.active,
+body.custom-accent .bg-primary {
+    background-color: var(--accent-color) !important;
+}
+body.custom-accent .text-primary { color: var(--accent-color) !important; }
+body.custom-accent .border-primary { border-color: var(--accent-color) !important; }
+body.custom-accent .form-check-input:checked {
+    background-color: var(--accent-color);
+    border-color: var(--accent-color);
+}
+
+/* Swatches de colores en Configuración */
+.accent-swatch {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.accent-swatch:hover { transform: scale(1.12); }
+.accent-swatch.active {
+    border-color: var(--bs-body-color);
+    box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), 0.35);
+    transform: scale(1.1);
+}
+
+/* Accesibilidad: Reducir Animaciones y Alto Contraste */
+body.reduce-motion *,
+body.reduce-motion *::before,
+body.reduce-motion *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+}
+body.high-contrast .card,
+body.high-contrast .form-control,
+body.high-contrast .form-select,
+body.high-contrast .table td,
+body.high-contrast .table th {
+    border-color: var(--bs-emphasis-color) !important;
+}
+
+/* =========================================================================
+   TEXTURAS DE FONDO, BOTONES, NAVBAR Y MENÚ LATERAL PERSONALIZABLES
+   ========================================================================= */
+body.bg-pattern-gradient:not(.has-wallpaper) {
+    background-image: radial-gradient(circle at 12% 15%, rgba(var(--bs-primary-rgb), 0.13), transparent 42%),
+                      radial-gradient(circle at 88% 85%, rgba(var(--bs-primary-rgb), 0.10), transparent 42%);
+}
+body.bg-pattern-dots:not(.has-wallpaper) {
+    background-image: radial-gradient(rgba(var(--bs-emphasis-color-rgb), 0.15) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+body.bg-pattern-grid:not(.has-wallpaper) {
+    background-image: linear-gradient(to right, rgba(var(--bs-emphasis-color-rgb), 0.06) 1px, transparent 1px),
+                      linear-gradient(to bottom, rgba(var(--bs-emphasis-color-rgb), 0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+}
+
+/* Forma de Botones */
+body.btn-style-pill .btn:not(.rounded-circle):not(.accent-swatch) {
+    border-radius: 50rem !important;
+}
+body.btn-style-square .btn:not(.rounded-circle):not(.accent-swatch) {
+    border-radius: 0.25rem !important;
+}
+
+/* Estilo de Navbar */
+body.navbar-style-accent .navbar-top {
+    background: linear-gradient(90deg, rgba(var(--bs-primary-rgb), 0.14), rgba(var(--bs-primary-rgb), 0.04)) !important;
+    border-bottom: 2px solid rgba(var(--bs-primary-rgb), 0.35) !important;
+}
+body.navbar-style-glass .navbar-top {
+    background-color: rgba(var(--bs-body-bg-rgb), 0.72) !important;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+
+/* Estilo de enlace activo en el Sidebar */
+body.sidebar-style-block .menu-link.active {
+    border-radius: 0.65rem;
+    margin: 2px 12px;
+    border-left: none;
+    background-color: rgba(255, 255, 255, 0.22);
+}
+body.sidebar-style-minimal .menu-link.active {
+    background-color: transparent;
+    border-radius: 0;
+    margin-right: 0;
+    border-left: 4px solid #fff;
+    font-weight: 700;
+    text-shadow: 0 0 12px rgba(255, 255, 255, 0.45);
+}
+#wrapper.sidebar-collapsed .menu-link.active {
+    margin: 0 !important;
+    border-radius: 0 !important;
+}
+
+/* Soporte de color sutil para acento dinámico */
+body.custom-accent .bg-primary-subtle {
+    background-color: rgba(var(--accent-rgb), 0.14) !important;
+}

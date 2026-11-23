@@ -210,14 +210,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const modalAdv = document.getElementById('modalBusquedaAvanzada');
     if (modalAdv) document.body.appendChild(modalAdv);
 
-    // Atajo de teclado Ctrl+K para abrir Búsqueda Avanzada
-    document.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-            e.preventDefault();
-            abrirModalBusquedaAvanzada();
-        }
-    });
-
     // Listeners para el buscador rápido en la Navbar
     const navInput = document.getElementById('navSearchInput');
     const navDrop = document.getElementById('navSearchDropdown');

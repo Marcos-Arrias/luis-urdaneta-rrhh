@@ -1,27 +1,15 @@
-// ==========================================
-// 1. CONTROL DEL MENÚ LATERAL
-// ==========================================
-const menuToggle = document.getElementById("menu-toggle");
-if (menuToggle) {
-    menuToggle.addEventListener("click", function(e) {
-        e.preventDefault();
-        document.getElementById("wrapper").classList.toggle("toggled");
-    });
-}
-
 // Función súper segura para evitar caídas de JS si falta un campo
 const setVal = (id, val) => { 
     let el = document.getElementById(id); 
-    if(el) el.value = val; 
-}
+    if (el) el.value = val; 
+};
 
 // ==========================================
-// 2. FORMULARIO DE PERSONAL (LIMPIEZA SEGURA)
+// 1. FORMULARIO DE PERSONAL (LIMPIEZA SEGURA)
 // ==========================================
 function limpiarFormulario() {
-    if(!document.getElementById("accion")) return; 
+    if (!document.getElementById("accion")) return; 
     
-    // Básicos
     setVal("accion", "crear");
     setVal("registro_id", "");
     setVal("cedula", "");
@@ -32,7 +20,6 @@ function limpiarFormulario() {
     setVal("estado_laboral", "Activo"); 
     setVal("fecha_ingreso", "");
 
-    // MPPE y Ocultos
     setVal("fecha_ingreso_mppe", "");
     setVal("cargo_nominal", "");
     setVal("codigo_cargo", "");
@@ -63,18 +50,17 @@ function limpiarFormulario() {
     setVal("banco_nomina", "");
     setVal("cuenta_bancaria", "");
     
-    // Ocultar colapso si está abierto
     let colapso = document.getElementById("datosMiscelaneos");
-    if(colapso && colapso.classList.contains('show')) {
+    if (colapso && colapso.classList.contains('show') && typeof bootstrap !== 'undefined') {
         new bootstrap.Collapse(colapso, {toggle: false}).hide();
     }
 }
 
 // ==========================================
-// 3. EDITAR REGISTRO (CARGA SEGURA)
+// 2. EDITAR REGISTRO (CARGA SEGURA)
 // ==========================================
 function editarRegistro(btn) {
-    if(!document.getElementById("accion")) return;
+    if (!document.getElementById("accion")) return;
     
     try {
         let d = JSON.parse(btn.getAttribute("data-empleado"));
@@ -123,19 +109,19 @@ function editarRegistro(btn) {
 }
 
 // ==========================================
-// 4. VER EXPEDIENTE EN OFFCANVAS
+// 3. VER EXPEDIENTE EN OFFCANVAS
 // ==========================================
 function verDetallesExtra(btn) {
     try {
         let d = JSON.parse(btn.getAttribute("data-empleado"));
-        const setTxt = (id, val) => { let el = document.getElementById(id); if(el) el.innerText = val; }
+        const setTxt = (id, val) => { let el = document.getElementById(id); if (el) el.innerText = val; };
 
         setTxt("oc_nombre", d.nombres + " " + d.apellidos);
         setTxt("oc_cedula", "V-" + d.cedula);
         setTxt("oc_edad", d.edad ? d.edad + " Años" : "Edad: N/A");
 
         let galeria = document.getElementById("oc_galeria");
-        if(galeria) {
+        if (galeria) {
             galeria.innerHTML = "";
             if (d.galeria_archivos) {
                 let lista = d.galeria_archivos.split("||");
@@ -179,7 +165,7 @@ function verDetallesExtra(btn) {
 }
 
 // ==========================================
-// 5. AGREGAR CARGO RÁPIDO (AJAX REPARADO)
+// 4. AGREGAR CARGO RÁPIDO (AJAX)
 // ==========================================
 function agregarCargoRapido(tipoPersonalId, selectId) {
     setVal('quick_tipo_id', tipoPersonalId);
@@ -211,7 +197,7 @@ async function guardarCargoModal() {
 
         if (data.success) {
             let select = document.getElementById(selectId);
-            if(select) {
+            if (select) {
                 select.add(new Option(data.nombre, data.id));
                 select.value = data.id; 
             }
