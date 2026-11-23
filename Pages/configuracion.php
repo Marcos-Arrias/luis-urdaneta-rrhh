@@ -42,6 +42,13 @@ include '../Includes/header.php';
 include '../Includes/sidebar.php';
 ?>
 
+<style>
+.collapse-toggle-btn { cursor: pointer; user-select: none; transition: background-color 0.2s ease; }
+.collapse-toggle-btn:hover { background-color: rgba(var(--bs-primary-rgb), 0.05); }
+.chevron-rot { transition: transform 0.25s ease; }
+.collapse-toggle-btn[aria-expanded="true"] .chevron-rot { transform: rotate(180deg); }
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="fw-bold mb-0"><i class="bi bi-gear-fill me-2 text-primary"></i> Ajustes y Mantenimiento</h2>
 </div>
@@ -72,72 +79,89 @@ include '../Includes/sidebar.php';
     <li class="nav-item"><button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#exportar"><i class="bi bi-cloud-arrow-down me-1"></i> Exportar</button></li>
     <li class="nav-item"><button class="nav-link fw-bold text-success" data-bs-toggle="pill" data-bs-target="#importar"><i class="bi bi-cloud-arrow-up me-1"></i> Importar y Cargas</button></li>
     <li class="nav-item"><button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#atajos"><i class="bi bi-keyboard me-1"></i> Atajos</button></li>
+    <li class="nav-item"><button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#tutorial"><i class="bi bi-compass me-1"></i> Tutorial</button></li>
 </ul>
 
 <div class="tab-content" id="ajustesTabContent">
     
-    <!-- PESTAÑA 1: APARIENCIA COMPLETA -->
+    <!-- PESTAÑA 1: APARIENCIA (COMPRIMIBLE Y ESPACIOSA) -->
     <div class="tab-pane fade show active" id="apariencia">
         
-        <!-- TEMAS RÁPIDOS (1 CLIC) -->
-        <div class="card shadow-sm border-0 mb-4 border-start border-4 border-primary bg-body-tertiary">
-            <div class="card-body p-3">
-                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-                    <h6 class="fw-bold mb-0"><i class="bi bi-stars me-2 text-primary"></i>Temas Rápidos (1 Clic)</h6>
-                    <small class="text-muted">Aplica combinaciones prearmadas al instante</small>
+        <!-- FILA COMPACTA COLAPSABLE: PRESETS + WALLPAPER -->
+        <div class="row g-3 mb-4">
+            <!-- Colapsable 1: Temas Rápidos -->
+            <div class="col-lg-6">
+                <div class="card shadow-sm border-0 border-start border-4 border-primary overflow-hidden">
+                    <div class="card-header bg-transparent border-0 p-3 d-flex justify-content-between align-items-center collapse-toggle-btn" data-bs-toggle="collapse" data-bs-target="#collapsePresets" aria-expanded="false">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-stars fs-5 text-primary"></i>
+                            <div>
+                                <span class="fw-bold d-block lh-1">Temas Rápidos (1 Clic)</span>
+                                <small class="text-muted" style="font-size: 0.74rem;">Perfiles preconfigurados listos para usar</small>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-primary-subtle text-primary rounded-pill">5 temas</span>
+                            <i class="bi bi-chevron-down chevron-rot text-muted"></i>
+                        </div>
+                    </div>
+                    <div id="collapsePresets" class="collapse">
+                        <div class="card-body pt-0 pb-3 px-3 border-top">
+                            <div class="d-flex flex-wrap gap-2 pt-3">
+                                <button type="button" class="btn btn-sm btn-outline-primary fw-bold rounded-pill px-3" onclick="aplicarTemaPreset('clasico')">🏛️ Institucional Clásico</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary fw-bold rounded-pill px-3" onclick="aplicarTemaPreset('noche')">🌌 Noche Ejecutiva</button>
+                                <button type="button" class="btn btn-sm btn-outline-success fw-bold rounded-pill px-3" onclick="aplicarTemaPreset('esmeralda')">🌿 Bosque Esmeralda</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary fw-bold rounded-pill px-3" onclick="aplicarTemaPreset('papel')">📄 Minimalista 2D</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger fw-bold rounded-pill px-3" onclick="aplicarTemaPreset('carmesi')">🎓 Carmesí Académico</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="d-flex flex-wrap gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-primary fw-bold rounded-pill px-3" onclick="aplicarTemaPreset('clasico')">🏛️ Institucional Clásico</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary fw-bold rounded-pill px-3" onclick="aplicarTemaPreset('noche')">🌌 Noche Ejecutiva</button>
-                    <button type="button" class="btn btn-sm btn-outline-success fw-bold rounded-pill px-3" onclick="aplicarTemaPreset('esmeralda')">🌿 Bosque Esmeralda</button>
-                    <button type="button" class="btn btn-sm btn-outline-dark fw-bold rounded-pill px-3" onclick="aplicarTemaPreset('papel')">📄 Minimalista 2D</button>
-                    <button type="button" class="btn btn-sm btn-outline-danger fw-bold rounded-pill px-3" onclick="aplicarTemaPreset('carmesi')">🎓 Carmesí Académico</button>
+            </div>
+
+            <!-- Colapsable 2: Fondo de Pantalla -->
+            <div class="col-lg-6">
+                <div class="card shadow-sm border-0 border-start border-4 border-info overflow-hidden">
+                    <div class="card-header bg-transparent border-0 p-3 d-flex justify-content-between align-items-center collapse-toggle-btn" data-bs-toggle="collapse" data-bs-target="#collapseWallpaper" aria-expanded="false">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-image fs-5 text-info"></i>
+                            <div>
+                                <span class="fw-bold d-block lh-1">Fondo de Pantalla (Wallpaper)</span>
+                                <small class="text-muted" style="font-size: 0.74rem;">Imagen local o URL con oscurecimiento</small>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-info-subtle text-info-emphasis rounded-pill d-none" id="badgeWallpaperActivo">Activo</span>
+                            <i class="bi bi-chevron-down chevron-rot text-muted"></i>
+                        </div>
+                    </div>
+                    <div id="collapseWallpaper" class="collapse">
+                        <div class="card-body pt-0 pb-3 px-3 border-top">
+                            <div class="row g-2 align-items-end pt-3 mb-3">
+                                <div class="col-sm-5">
+                                    <label class="small fw-bold text-muted mb-1"><i class="bi bi-upload me-1"></i>Desde el PC:</label>
+                                    <input type="file" id="bgImageInput" class="form-control form-control-sm" accept="image/*">
+                                </div>
+                                <div class="col-sm-5">
+                                    <label class="small fw-bold text-muted mb-1"><i class="bi bi-link-45deg me-1"></i>O Enlace (URL):</label>
+                                    <input type="url" id="bgUrlInput" class="form-control form-control-sm" placeholder="https://ejemplo.com/fondo.jpg">
+                                </div>
+                                <div class="col-sm-2">
+                                    <button id="resetBgBtn" class="btn btn-outline-danger btn-sm w-100 fw-bold" onclick="quitarFondoCompleto()" title="Quitar fondo"><i class="bi bi-trash"></i></button>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-3 pt-2 border-top">
+                                <label class="small fw-bold text-muted text-nowrap mb-0"><i class="bi bi-brightness-low me-1"></i>Oscurecimiento:</label>
+                                <input type="range" class="form-range flex-grow-1" id="rangeWallpaperDim" min="0" max="80" step="5" value="35">
+                                <span class="badge bg-secondary-subtle text-body border" id="lblWallpaperDim">35%</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- CENTRO DE AYUDA -->
-        <div class="card shadow-sm border-0 mb-4 border-start border-4 border-warning bg-body-tertiary">
-            <div class="card-body p-3 d-flex flex-wrap justify-content-between align-items-center gap-3">
-                <div class="d-flex align-items-center">
-                    <i class="bi bi-compass-fill text-warning fs-1 me-3"></i>
-                    <div>
-                        <h5 class="fw-bold mb-0">Guía Interactiva del Sistema</h5>
-                        <small class="text-muted">¿Tienes dudas sobre cómo usar el portal? Reinicia el tutorial interactivo cuando quieras.</small>
-                    </div>
-                </div>
-                <button type="button" class="btn btn-warning rounded-pill px-4 fw-bold shadow-sm text-dark" onclick="iniciarTutorialManual()">
-                    <i class="bi bi-play-circle-fill me-1"></i> Iniciar Tutorial Guiado
-                </button>
-            </div>
-        </div>
-
-        <!-- FONDO DE PANTALLA + OSCURECEDOR -->
-        <div class="card shadow-sm border-0 mb-4 border-start border-4 border-info bg-body-tertiary">
-            <div class="card-body p-4">
-                <h5 class="fw-bold mb-1"><i class="bi bi-image me-2 text-info"></i>Fondo de Pantalla (Wallpaper)</h5>
-                <p class="small text-muted mb-3">Sube una imagen de tu PC o pega un enlace para personalizar todo el portal.</p>
-                <div class="row g-2 align-items-end mb-3">
-                    <div class="col-md-5">
-                        <label class="small fw-bold text-muted mb-1"><i class="bi bi-upload me-1"></i>Subir desde el PC:</label>
-                        <input type="file" id="bgImageInput" class="form-control" accept="image/*">
-                    </div>
-                    <div class="col-md-5">
-                        <label class="small fw-bold text-muted mb-1"><i class="bi bi-link-45deg me-1"></i>O pegar Enlace (URL):</label>
-                        <input type="url" id="bgUrlInput" class="form-control" placeholder="https://ejemplo.com/fondo.jpg">
-                    </div>
-                    <div class="col-md-2">
-                        <button id="resetBgBtn" class="btn btn-outline-danger w-100 fw-bold" onclick="quitarFondoCompleto()"><i class="bi bi-trash"></i> Quitar</button>
-                    </div>
-                </div>
-                <div class="d-flex align-items-center gap-3 pt-2 border-top">
-                    <label class="small fw-bold text-muted text-nowrap mb-0"><i class="bi bi-brightness-low me-1"></i>Oscurecimiento del Fondo:</label>
-                    <input type="range" class="form-range flex-grow-1" id="rangeWallpaperDim" min="0" max="80" step="5" value="35">
-                    <span class="badge bg-secondary-subtle text-body border" id="lblWallpaperDim">35%</span>
-                </div>
-            </div>
-        </div>
-
+        <!-- CUADRÍCULA LIMPIA DE PERSONALIZACIÓN -->
         <div class="row g-3">
             <!-- MODO OSCURO CON TRANSICIÓN SOL <-> LUNA -->
             <div class="col-md-4">
@@ -178,7 +202,7 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
-            <!-- COLOR DE ACENTO GLOBAL (DROPDOWN + SELECTOR LIBRE IGUAL AL MENÚ) -->
+            <!-- COLOR DE ACENTO GLOBAL -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-info">
                     <div class="card-body text-center py-4">
@@ -202,7 +226,7 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
-            <!-- ESTILO DE CONTENEDORES (3D / 2D / CRISTAL) -->
+            <!-- ESTILO DE CONTENEDORES -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-warning">
                     <div class="card-body text-center py-4">
@@ -223,7 +247,7 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
-            <!-- FONDO AMBIENTAL (TEXTURAS) -->
+            <!-- FONDO AMBIENTAL -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-primary">
                     <div class="card-body text-center py-4">
@@ -256,7 +280,7 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
-            <!-- ESTILO DE BARRA SUPERIOR (NAVBAR) -->
+            <!-- BARRA SUPERIOR -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-info">
                     <div class="card-body text-center py-4">
@@ -272,7 +296,7 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
-            <!-- ESTILO DEL ÍTEM ACTIVO EN MENÚ -->
+            <!-- INDICADOR DE MENÚ -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-warning">
                     <div class="card-body text-center py-4">
@@ -306,7 +330,7 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
-            <!-- REDONDEADO DE BORDES -->
+            <!-- REDONDEADO -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-secondary">
                     <div class="card-body py-4">
@@ -440,7 +464,7 @@ include '../Includes/sidebar.php';
         </div>
     </div>
 
-    <!-- PESTAÑA 3: EXPORTAR (SIN PPT) -->
+    <!-- PESTAÑA 3: EXPORTAR -->
     <div class="tab-pane fade" id="exportar">
         <div class="card shadow-sm border-0 mb-4 border-top border-4 border-primary">
             <div class="card-body p-4">
@@ -643,6 +667,50 @@ include '../Includes/sidebar.php';
         </div>
     </div>
 
+    <!-- PESTAÑA 6: DOCUMENTACIÓN Y TUTORIAL COMPLETO -->
+    <div class="tab-pane fade" id="tutorial">
+        <?php include '../Includes/manual_usuario.php'; ?>
+    </div>
+
+        <div class="row g-3">
+            <div class="col-md-6 col-lg-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="icon-circle bg-primary-subtle text-primary me-2" style="width:38px;height:38px;"><i class="bi bi-people-fill"></i></span>
+                            <h6 class="fw-bold mb-0">Expedientes y Traslados</h6>
+                        </div>
+                        <p class="small text-muted mb-0">Gestiona docentes, administrativos y obreros. Selecciona múltiples casillas en la tabla para trasladarlos entre categorías o subir múltiples documentos sellados con SHA-256.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="icon-circle bg-success-subtle text-success me-2" style="width:38px;height:38px;"><i class="bi bi-lightning-charge-fill"></i></span>
+                            <h6 class="fw-bold mb-0">Asistencia Rápida y Cierre</h6>
+                        </div>
+                        <p class="small text-muted mb-0">Usa la barra superior de cédula para marcar entradas y salidas con Enter. Al finalizar el día según el reloj interno, las jornadas abiertas se cierran y los ausentes quedan registrados.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center mb-2">
+                            <span class="icon-circle bg-info-subtle text-info me-2" style="width:38px;height:38px;"><i class="bi bi-diagram-3-fill"></i></span>
+                            <h6 class="fw-bold mb-0">Organigrama y ReBAC</h6>
+                        </div>
+                        <p class="small text-muted mb-0">Construye la jerarquía institucional arrastrando nodos, exporta en formato monocromático sin internet y vincula documentos independientes desde el Archivo Digital.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <!-- MODAL CREAR NUEVO CARGO -->
@@ -693,6 +761,13 @@ function descargarReporte(formato) {
     else window.location.href = url;
 }
 document.addEventListener("DOMContentLoaded", () => {
+    // Mostrar insignia "Activo" si hay wallpaper configurado
+    const bgActivo = localStorage.getItem('customWallpaper');
+    const badgeWp = document.getElementById('badgeWallpaperActivo');
+    if (badgeWp && bgActivo && bgActivo.trim() !== '') {
+        badgeWp.classList.remove('d-none');
+    }
+
     if (window.location.hash) {
         const trigger = document.querySelector(`button[data-bs-target="${window.location.hash}"]`);
         if (trigger && typeof bootstrap !== 'undefined') new bootstrap.Tab(trigger).show();

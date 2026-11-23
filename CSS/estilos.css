@@ -462,3 +462,64 @@ body.sidebar-style-minimal .menu-link.active {
 body.custom-accent .bg-primary-subtle {
     background-color: rgba(var(--accent-rgb), 0.14) !important;
 }
+
+/* =========================================================================
+   TEXTURAS DE FONDO, BOTONES, NAVBAR Y MENÚ LATERAL PERSONALIZABLES
+   ========================================================================= */
+body.bg-pattern-gradient:not(.has-wallpaper) {
+    background-image: radial-gradient(circle at 12% 15%, rgba(var(--bs-primary-rgb), 0.13), transparent 42%),
+                      radial-gradient(circle at 88% 85%, rgba(var(--bs-primary-rgb), 0.10), transparent 42%);
+}
+body.bg-pattern-dots:not(.has-wallpaper) {
+    background-image: radial-gradient(rgba(var(--bs-emphasis-color-rgb), 0.15) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+body.bg-pattern-grid:not(.has-wallpaper) {
+    background-image: linear-gradient(to right, rgba(var(--bs-emphasis-color-rgb), 0.06) 1px, transparent 1px),
+                      linear-gradient(to bottom, rgba(var(--bs-emphasis-color-rgb), 0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+}
+
+/* Forma de Botones */
+body.btn-style-pill .btn:not(.rounded-circle):not(.accent-swatch) {
+    border-radius: 50rem !important;
+}
+body.btn-style-square .btn:not(.rounded-circle):not(.accent-swatch) {
+    border-radius: 0.25rem !important;
+}
+
+/* Estilo de Navbar */
+body.navbar-style-accent .navbar-top {
+    background: linear-gradient(90deg, rgba(var(--bs-primary-rgb), 0.14), rgba(var(--bs-primary-rgb), 0.04)) !important;
+    border-bottom: 2px solid rgba(var(--bs-primary-rgb), 0.35) !important;
+}
+body.navbar-style-glass .navbar-top {
+    background-color: rgba(var(--bs-body-bg-rgb), 0.72) !important;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+
+/* Estilo de enlace activo en el Sidebar */
+body.sidebar-style-block .menu-link.active {
+    border-radius: 0.65rem;
+    margin: 2px 12px;
+    border-left: none;
+    background-color: rgba(255, 255, 255, 0.22);
+}
+body.sidebar-style-minimal .menu-link.active {
+    background-color: transparent;
+    border-radius: 0;
+    margin-right: 0;
+    border-left: 4px solid #fff;
+    font-weight: 700;
+    text-shadow: 0 0 12px rgba(255, 255, 255, 0.45);
+}
+#wrapper.sidebar-collapsed .menu-link.active {
+    margin: 0 !important;
+    border-radius: 0 !important;
+}
+
+/* Soporte de color sutil para acento dinámico */
+body.custom-accent .bg-primary-subtle {
+    background-color: rgba(var(--accent-rgb), 0.14) !important;
+}

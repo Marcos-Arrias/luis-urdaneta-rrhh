@@ -6,7 +6,7 @@
     <script>
         let loginUrl = null;
 
-        if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+        if (window.location.protocol === "http:"){
             loginUrl = new URL("./index.php", window.location.href);
         } else if (window.location.protocol === "file:") {
             const projectPath = window.location.pathname.match(/\/htdocs\/(.*)$/i);
