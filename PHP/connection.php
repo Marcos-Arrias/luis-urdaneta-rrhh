@@ -551,13 +551,7 @@ function registrarHistorial($pdo, $tabla, $accion_str, $descripcion, $registro_i
 function formatearTelefono($telefono) {
     $tel = trim($telefono);
     if (empty($tel)) return '<span class="text-muted small">No registrado</span>';
-    
-    $bandera = '📱'; 
-    if (strpos($tel, '+58') === 0) $bandera = '🇻🇪'; 
-    elseif (strpos($tel, '+57') === 0) $bandera = '🇨🇴'; 
-    
-    $numeroLimpio = preg_replace('/[^0-9]/', '', $tel);
-    return '<a href="https://wa.me/' . $numeroLimpio . '" target="_blank" class="text-decoration-none text-body fw-medium"><span class="me-1 fs-5">' . $bandera . '</span>' . htmlspecialchars($tel) . '</a>';
+    return '<span class="text-body fw-medium"><i class="bi bi-telephone-fill text-success me-2"></i>' . htmlspecialchars($tel) . '</span>';
 }
 
 function tienePermisoReBAC($pdo, $usuario_id, $nombre_recurso, $accion = 'leer', $objeto_id = 0) {
@@ -619,8 +613,8 @@ function exigirPermisoReBAC($pdo, $nombre_recurso, $accion = 'leer', $objeto_id 
         include '../Includes/sidebar.php';
         echo '<div class="alert alert-danger shadow-sm p-4 text-center rounded-4 mt-5">
                 <i class="bi bi-shield-lock-fill fs-1 d-block mb-2"></i>
-                <h4>Acceso Denegado por ReBAC</h4>
-                <p class="mb-0">No cuentas con relación autorizada para <strong>' . htmlspecialchars($accion) . '</strong> en el módulo <strong>' . htmlspecialchars($nombre_recurso) . '</strong>.</p>
+                <h4>Acceso Restringido</h4>
+                <p class="mb-0">Tu cuenta no tiene permisos suficientes para esta sección.</p>
               </div>';
         include '../Includes/footer.php';
         exit;

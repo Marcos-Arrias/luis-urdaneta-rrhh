@@ -816,7 +816,7 @@
         { id: 'ir_calendario',     nombre: 'Ir a Calendario Laboral', desc: 'Turnos y horarios semanales', def: 'Alt+H' },
         { id: 'ir_asistencias',    nombre: 'Ir a Control de Asistencias', desc: 'Registro rápido y novedades', def: 'Alt+A' },
         { id: 'ir_cronograma',     nombre: 'Ir a Cronograma', desc: 'Agenda diaria de eventos', def: 'Alt+C' },
-        { id: 'ir_documentos',     nombre: 'Ir a Archivo Digital', desc: 'Repositorio documental SHA-256', def: 'Alt+D' },
+        { id: 'ir_documentos',     nombre: 'Ir a Archivo Digital', desc: 'Repositorio documental', def: 'Alt+D' },
         { id: 'ir_configuracion',  nombre: 'Ir a Configuración', desc: 'Ajustes, catálogos y atajos', def: 'Alt+S' }
     ];
 

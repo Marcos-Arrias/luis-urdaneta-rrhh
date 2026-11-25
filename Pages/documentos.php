@@ -8,7 +8,6 @@ if (!isset($_SESSION['admin_id'])) {
 
 $usuario_actual_id = $_SESSION['admin_id'];
 
-// 1. AUTO-ASEGURAR ESTRUCTURA GENERALIZADA DE DOCUMENTOS
 $pdo->exec("CREATE TABLE IF NOT EXISTS cat_tipos_documentos (
     id INT AUTO_INCREMENT PRIMARY KEY,
     clave CHAR(3) NOT NULL UNIQUE,
@@ -23,7 +22,7 @@ if ($pdo->query("SELECT COUNT(*) FROM cat_tipos_documentos")->fetchColumn() == 0
         (4, 'MED', 'Informe o Certificado Médico'),
         (5, 'SOP', 'Soporte de Justificación / Reposo'),
         (6, 'MEM', 'Memorándum o Acta Institucional'),
-        (7, 'OTR', 'Otro Soporte Digital')");
+        (7, 'OTR', 'Otro Documento')");
 }
 
 $pdo->exec("CREATE TABLE IF NOT EXISTS documentos (
@@ -49,7 +48,6 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS documentos_enlaces (
     FOREIGN KEY (documento_id) REFERENCES documentos(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-// 2. EVALUACIÓN DE PERMISOS ReBAC
 $puedeLeer     = tienePermisoReBAC($pdo, $usuario_actual_id, 'documentos', 'leer');
 $puedeCrear    = tienePermisoReBAC($pdo, $usuario_actual_id, 'documentos', 'crear');
 $puedeEditar   = tienePermisoReBAC($pdo, $usuario_actual_id, 'documentos', 'editar');
@@ -59,21 +57,19 @@ if (!$puedeLeer) {
     include '../Includes/header.php'; include '../Includes/sidebar.php';
     echo '<div class="alert alert-danger shadow-sm p-4 text-center rounded-4 mt-5">
             <i class="bi bi-shield-lock-fill fs-1 d-block mb-2"></i>
-            <h4>Acceso Denegado por ReBAC</h4>
-            <p class="mb-0">Tu usuario no posee una relación autorizada sobre el recurso <strong>documentos</strong>.</p>
+            <h4>Acceso Restringido</h4>
+            <p class="mb-0">Tu cuenta no tiene permisos habilitados para ver la sección de documentos.</p>
           </div>';
     include '../Includes/footer.php';
     exit;
 }
 
-// 3. PROCESAMIENTO DE ACCIONES (POST)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $accion = $_POST['accion'] ?? '';
 
     try {
-        // A. SUBIR NUEVO DOCUMENTO
         if ($accion === 'subir_documento') {
-            if (!$puedeCrear) die("Sin permiso ReBAC para crear documentos.");
+            if (!$puedeCrear) die("Sin permiso para subir documentos.");
             
             if (empty($_FILES['archivo']['tmp_name']) || $_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
                 header("Location: documentos.php?msg=err_archivo"); exit;
@@ -119,15 +115,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("INSERT INTO documentos_enlaces (documento_id, tabla_destino, registro_id, notas) VALUES (?, ?, ?, ?)")
                     ->execute([$docId, $tabla_destino, $registro_id, $notas]);
 
-                registrarHistorial($pdo, 'Documentos', 'CREAR', "Subió archivo $codigo ($nombreOrig) vinculado a $tabla_destino.", $docId);
+                registrarHistorial($pdo, 'Documentos', 'CREAR', "Subió el archivo $nombreOrig ($codigo).", $docId);
                 $pdo->commit();
                 header("Location: documentos.php?msg=subido"); exit;
             }
         }
-
-        // B. VINCULAR DOCUMENTO EXISTENTE A OTRO REGISTRO
         elseif ($accion === 'vincular_extra') {
-            if (!$puedeEditar) die("Sin permiso ReBAC para editar vínculos.");
+            if (!$puedeEditar) die("Sin permiso para asociar documentos.");
             
             $docId = intval($_POST['documento_id']);
             $tabla_destino = $_POST['tabla_destino'];
@@ -141,13 +135,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare("INSERT INTO documentos_enlaces (documento_id, tabla_destino, registro_id, notas) VALUES (?, ?, ?, ?)")
                 ->execute([$docId, $tabla_destino, $registro_id, $notas]);
 
-            registrarHistorial($pdo, 'Documentos', 'ACTUALIZAR', "Agregó un nuevo vínculo ($tabla_destino #$registro_id) al documento #$docId.", $docId);
+            registrarHistorial($pdo, 'Documentos', 'ACTUALIZAR', "Asoció el documento #$docId con otro registro.", $docId);
             header("Location: documentos.php?msg=vinculado"); exit;
         }
-
-        // C. ELIMINAR DOCUMENTO (FÍSICO + BD)
         elseif ($accion === 'eliminar_documento') {
-            if (!$puedeEliminar) die("Sin permiso ReBAC para eliminar.");
+            if (!$puedeEliminar) die("Sin permiso para eliminar documentos.");
             
             $docId = intval($_POST['id']);
             $stmtD = $pdo->prepare("SELECT codigo_archivo, ruta_archivo FROM documentos WHERE id = ?");
@@ -155,22 +147,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $doc = $stmtD->fetch();
 
             if ($doc) {
-                if (file_exists($doc['ruta_archivo'])) {
-                    @unlink($doc['ruta_archivo']);
-                }
+                if (file_exists($doc['ruta_archivo'])) @unlink($doc['ruta_archivo']);
                 $pdo->prepare("DELETE FROM documentos WHERE id = ?")->execute([$docId]);
-                registrarHistorial($pdo, 'Documentos', 'ELIMINAR', "Eliminó permanentemente el archivo {$doc['codigo_archivo']}.", $docId);
+                registrarHistorial($pdo, 'Documentos', 'ELIMINAR', "Eliminó el documento {$doc['codigo_archivo']}.", $docId);
             }
             header("Location: documentos.php?msg=eliminado"); exit;
         }
-
     } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        die("Error procesando documento: " . $e->getMessage());
+        die("Error procesando el documento: " . $e->getMessage());
     }
 }
 
-// 4. CONSULTAS PARA LA VISTA
 $documentos = $pdo->query("
     SELECT d.*, td.clave, td.nombre as tipo_nombre
     FROM documentos d
@@ -192,57 +180,49 @@ foreach ($enlacesRaw as $e) {
     $enlacesPorDoc[$e['documento_id']][] = $e;
 }
 
-// KPIs
 $totalDocs = count($documentos);
 $totalBytes = 0;
-$integridadOk = 0;
+$archivosDisponibles = 0;
 foreach ($documentos as $idx => $doc) {
     $totalBytes += (int)$doc['tamano_bytes'];
-    $archivoIntegro = file_exists($doc['ruta_archivo']) && (!empty($doc['hash_verificacion']) && hash_file('sha256', $doc['ruta_archivo']) === $doc['hash_verificacion']);
+    $archivoIntegro = file_exists($doc['ruta_archivo']) && (empty($doc['hash_verificacion']) || hash_file('sha256', $doc['ruta_archivo']) === $doc['hash_verificacion']);
     $documentos[$idx]['integro'] = $archivoIntegro;
-    if ($archivoIntegro) $integridadOk++;
+    if ($archivoIntegro) $archivosDisponibles++;
 }
 $tamanoMB = number_format($totalBytes / 1048576, 2);
 
 $tiposDoc = $pdo->query("SELECT * FROM cat_tipos_documentos ORDER BY clave ASC")->fetchAll();
 $listaEventos = $pdo->query("SELECT id, titulo, fecha FROM cronograma_eventos ORDER BY fecha DESC LIMIT 50")->fetchAll();
-$perfilSeguridad = obtenerPerfilSeguridad($pdo, $usuario_actual_id);
 
 include '../Includes/header.php';
 include '../Includes/sidebar.php';
 ?>
 
 <style>
-.doc-card { transition: transform 0.2s, box-shadow 0.2s; }
-.doc-card:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,0,0,0.1) !important; }
 .file-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 10px; }
 </style>
 
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
     <div>
-        <h2 class="fw-bold mb-0"><i class="bi bi-folder2-open me-2 text-primary"></i> Repositorio Documental</h2>
-        <p class="text-muted small mb-0">
-            Gestión independiente y polimórfica de soportes digitales | 
-            <span class="badge bg-dark-subtle text-body border"><i class="bi bi-shield-check text-success me-1"></i> Rol: <?= htmlspecialchars($perfilSeguridad['rol_nombre'] ?? 'N/A') ?> (ReBAC Activo)</span>
-        </p>
+        <h2 class="fw-bold mb-0"><i class="bi bi-folder2-open me-2 text-primary"></i> Archivo Digital</h2>
+        <p class="text-muted small mb-0">Carpeta centralizada para guardar y organizar los documentos de la institución y del personal.</p>
     </div>
     <?php if ($puedeCrear): ?>
     <button class="btn btn-primary shadow-sm rounded-pill px-4 fw-bold" data-bs-toggle="modal" data-bs-target="#modalSubirDoc">
-        <i class="bi bi-cloud-arrow-up-fill me-2"></i> Subir Archivo
+        <i class="bi bi-cloud-arrow-up-fill me-2"></i> Subir Documento
     </button>
     <?php endif; ?>
 </div>
 
-<!-- ALERTAS -->
 <?php if (isset($_GET['msg'])): ?>
     <?php 
     $msgs = [
-        'subido'      => ['success', 'Archivo subido, codificado y sellado con SHA-256 exitosamente.'],
-        'vinculado'   => ['info', 'Se asoció un nuevo vínculo al documento.'],
-        'eliminado'   => ['danger', 'Documento eliminado del servidor y de la base de datos.'],
+        'subido'      => ['success', 'El documento se guardó correctamente.'],
+        'vinculado'   => ['info', 'El documento fue asociado correctamente.'],
+        'eliminado'   => ['danger', 'El documento fue eliminado.'],
         'err_archivo' => ['warning', 'Debe seleccionar un archivo válido.'],
-        'err_ext'     => ['danger', 'Extensión de archivo no permitida por seguridad.'],
-        'err_destino' => ['warning', 'Debes seleccionar un trabajador o evento de la lista para poder vincularlo.']
+        'err_ext'     => ['danger', 'Ese tipo de archivo no está permitido.'],
+        'err_destino' => ['warning', 'Debes seleccionar a una persona o evento de la lista.']
     ];
     if (isset($msgs[$_GET['msg']])): $m = $msgs[$_GET['msg']]; ?>
         <div class="alert alert-<?= $m[0] ?> alert-dismissible fade show shadow-sm py-2">
@@ -252,74 +232,74 @@ include '../Includes/sidebar.php';
     <?php endif; ?>
 <?php endif; ?>
 
-<!-- KPIs DEL REPOSITORIO -->
+<!-- RESUMEN -->
 <div class="row mb-4">
     <div class="col-md-4 mb-2">
-        <div class="card border-0 bg-primary-subtle text-primary shadow-sm rounded-4 h-100">
+        <div class="card border-0 shadow-sm h-100 dash-card">
             <div class="card-body d-flex justify-content-between align-items-center p-3">
-                <div><h6 class="fw-bold mb-1">Total Documentos</h6><h2 class="mb-0 fw-black"><?= $totalDocs ?></h2></div>
-                <i class="bi bi-files fs-1 opacity-50"></i>
+                <div><span class="text-muted small fw-bold text-uppercase">Total Documentos</span><h2 class="mb-0 fw-black mt-1"><?= $totalDocs ?></h2></div>
+                <div class="icon-circle bg-primary-subtle text-primary"><i class="bi bi-files fs-4"></i></div>
             </div>
         </div>
     </div>
     <div class="col-md-4 mb-2">
-        <div class="card border-0 bg-info-subtle text-info-emphasis shadow-sm rounded-4 h-100">
+        <div class="card border-0 shadow-sm h-100 dash-card">
             <div class="card-body d-flex justify-content-between align-items-center p-3">
-                <div><h6 class="fw-bold mb-1">Espacio Almacenado</h6><h2 class="mb-0 fw-black"><?= $tamanoMB ?> <small class="fs-6">MB</small></h2></div>
-                <i class="bi bi-hdd-fill fs-1 opacity-50"></i>
+                <div><span class="text-muted small fw-bold text-uppercase">Espacio Utilizado</span><h2 class="mb-0 fw-black mt-1"><?= $tamanoMB ?> <small class="fs-6">MB</small></h2></div>
+                <div class="icon-circle bg-info-subtle text-info"><i class="bi bi-hdd-fill fs-4"></i></div>
             </div>
         </div>
     </div>
     <div class="col-md-4 mb-2">
-        <div class="card border-0 bg-success-subtle text-success shadow-sm rounded-4 h-100">
+        <div class="card border-0 shadow-sm h-100 dash-card">
             <div class="card-body d-flex justify-content-between align-items-center p-3">
-                <div><h6 class="fw-bold mb-1">Integridad SHA-256</h6><h2 class="mb-0 fw-black"><?= $integridadOk ?> / <?= $totalDocs ?></h2></div>
-                <i class="bi bi-patch-check-fill fs-1 opacity-50"></i>
+                <div><span class="text-muted small fw-bold text-uppercase">Archivos en Buen Estado</span><h2 class="mb-0 fw-black mt-1"><?= $archivosDisponibles ?> / <?= $totalDocs ?></h2></div>
+                <div class="icon-circle bg-success-subtle text-success"><i class="bi bi-patch-check-fill fs-4"></i></div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- BARRA DE BÚSQUEDA Y FILTROS HORIZONTAL -->
-<div class="card shadow-sm border-0 rounded-4 mb-4 bg-body-tertiary">
+<!-- BUSCADOR Y FILTROS -->
+<div class="card shadow-sm border-0 mb-4 bg-body-tertiary">
     <div class="card-body p-3">
         <div class="row g-2 align-items-center">
             <div class="col-md-5">
                 <div class="input-group">
                     <span class="input-group-text bg-body border-0"><i class="bi bi-search text-primary"></i></span>
-                    <input type="text" id="buscadorDocs" class="form-control border-0 shadow-none" value="<?= htmlspecialchars($_GET['q'] ?? '') ?>" placeholder="Buscar por código, nombre, persona o evento..." autofocus>
+                    <input type="text" id="buscadorDocs" class="form-control border-0 shadow-none" value="<?= htmlspecialchars($_GET['q'] ?? '') ?>" placeholder="Buscar por nombre, código o persona..." autofocus>
                 </div>
             </div>
             <div class="col-md-3">
                 <select id="filtroTipoDoc" class="form-select border-0 shadow-sm">
                     <option value="todos">Todos los Tipos</option>
                     <?php foreach ($tiposDoc as $t): ?>
-                        <option value="<?= $t['clave'] ?>"><?= $t['clave'] ?> - <?= htmlspecialchars($t['nombre']) ?></option>
+                        <option value="<?= $t['clave'] ?>"><?= htmlspecialchars($t['nombre']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
             <div class="col-md-4">
                 <select id="filtroEntidadDoc" class="form-select border-0 shadow-sm">
-                    <option value="todos">Cualquier Vinculación</option>
-                    <option value="institucional">🏛️ Institucional / Independientes</option>
-                    <option value="personal">👤 Expedientes de Personal</option>
-                    <option value="cronograma_eventos">📅 Eventos / Cronograma</option>
+                    <option value="todos">Todos los Documentos</option>
+                    <option value="institucional">Documentos Generales de la Institución</option>
+                    <option value="personal">Documentos de Trabajadores</option>
+                    <option value="cronograma_eventos">Documentos de Actividades / Eventos</option>
                 </select>
             </div>
         </div>
     </div>
 </div>
 
-<!-- TABLA PRINCIPAL DE ARCHIVOS -->
-<div class="card shadow-sm border-0 rounded-4 overflow-hidden">
+<!-- TABLA PRINCIPAL -->
+<div class="card shadow-sm border-0 overflow-hidden">
     <div class="table-responsive">
         <table class="table table-hover mb-0 align-middle" id="tablaDocumentos">
             <thead class="table-light text-secondary">
                 <tr>
-                    <th class="ps-4">Archivo / Código</th>
-                    <th>Categoría</th>
-                    <th>Vínculos (Entidades Asociadas)</th>
-                    <th class="text-center">Tamaño & Integridad</th>
+                    <th class="ps-4">Nombre del Archivo</th>
+                    <th>Tipo</th>
+                    <th>Asociado a</th>
+                    <th class="text-center">Tamaño y Estado</th>
                     <th class="text-center">Fecha</th>
                     <th class="text-center">Acciones</th>
                 </tr>
@@ -344,13 +324,13 @@ include '../Includes/sidebar.php';
                                 <?php endif; ?>
                                 <div>
                                     <div class="fw-bold text-body"><?= htmlspecialchars($d['nombre_original']) ?></div>
-                                    <small class="text-muted font-monospace"><?= htmlspecialchars($d['codigo_archivo']) ?></small>
+                                    <small class="text-muted"><?= htmlspecialchars($d['codigo_archivo']) ?></small>
                                 </div>
                             </div>
                         </td>
                         <td>
                             <span class="badge bg-secondary-subtle text-body border px-2 py-1">
-                                <strong><?= $d['clave'] ?></strong> - <?= htmlspecialchars($d['tipo_nombre']) ?>
+                                <?= htmlspecialchars($d['tipo_nombre']) ?>
                             </span>
                         </td>
                         <td>
@@ -358,26 +338,28 @@ include '../Includes/sidebar.php';
                                 <?php if (count($vinculos) > 0): ?>
                                     <?php foreach ($vinculos as $v): ?>
                                         <?php if ($v['tabla_destino'] === 'institucional'): ?>
-                                            <span class="badge bg-dark text-white rounded-pill"><i class="bi bi-bank me-1"></i> Institucional / Libre</span>
+                                            <span class="badge bg-body-secondary text-body border rounded-pill"><i class="bi bi-building me-1"></i> Documento General</span>
                                         <?php elseif ($v['tabla_destino'] === 'personal'): ?>
-                                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill"><i class="bi bi-person-fill me-1"></i> <?= htmlspecialchars($v['nombre_personal'] ?? 'Personal #' . $v['registro_id']) ?></span>
+                                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill"><i class="bi bi-person-fill me-1"></i> <?= htmlspecialchars($v['nombre_personal'] ?? 'Trabajador #' . $v['registro_id']) ?></span>
                                         <?php elseif ($v['tabla_destino'] === 'cronograma_eventos'): ?>
                                             <span class="badge bg-warning-subtle text-warning-emphasis border rounded-pill"><i class="bi bi-calendar-event me-1"></i> <?= htmlspecialchars($v['nombre_evento'] ?? 'Evento #' . $v['registro_id']) ?></span>
                                         <?php endif; ?>
                                     <?php endforeach; ?>
                                 <?php else: ?>
-                                    <span class="badge bg-light text-muted border">Sin vínculos</span>
+                                    <span class="badge bg-body-secondary text-muted border">Sin asignar</span>
                                 <?php endif; ?>
                             </div>
                         </td>
                         <td class="text-center small">
                             <div class="fw-bold"><?= number_format($d['tamano_bytes'] / 1024, 1) ?> KB</div>
                             <?php if ($d['integro']): ?>
-                                <span class="badge bg-success-subtle text-success border border-success-subtle" title="SHA-256: <?= $d['hash_verificacion'] ?>">
-                                    <i class="bi bi-shield-check me-1"></i> Íntegro
+                                <span class="badge bg-success-subtle text-success border border-success-subtle">
+                                    <i class="bi bi-check-circle me-1"></i> Verificado
                                 </span>
                             <?php else: ?>
-                                <span class="badge bg-danger-subtle text-danger border"><i class="bi bi-exclamation-triangle me-1"></i> Alterado / Falta</span>
+                                <span class="badge bg-danger-subtle text-danger border">
+                                    <i class="bi bi-exclamation-triangle me-1"></i> No encontrado
+                                </span>
                             <?php endif; ?>
                         </td>
                         <td class="text-center text-muted small">
@@ -386,84 +368,80 @@ include '../Includes/sidebar.php';
                         </td>
                         <td class="text-center text-nowrap">
                             <?php if ($esImagen || $esPdf): ?>
-                                <button class="btn btn-sm btn-light text-info shadow-sm rounded-circle me-1" onclick="previsualizarArchivo('<?= $d['ruta_archivo'] ?>', '<?= htmlspecialchars($d['nombre_original'], ENT_QUOTES) ?>', '<?= $d['mime_type'] ?>')" title="Vista Previa">
+                                <button class="btn btn-sm btn-icon-theme text-info rounded-circle me-1" onclick="previsualizarArchivo('<?= $d['ruta_archivo'] ?>', '<?= htmlspecialchars($d['nombre_original'], ENT_QUOTES) ?>', '<?= $d['mime_type'] ?>')" title="Ver Documento">
                                     <i class="bi bi-eye-fill"></i>
                                 </button>
                             <?php endif; ?>
                             
-                            <a href="<?= $d['ruta_archivo'] ?>" download="<?= htmlspecialchars($d['nombre_original']) ?>" class="btn btn-sm btn-light text-primary shadow-sm rounded-circle me-1" title="Descargar">
+                            <a href="<?= $d['ruta_archivo'] ?>" download="<?= htmlspecialchars($d['nombre_original']) ?>" class="btn btn-sm btn-icon-theme text-primary rounded-circle me-1" title="Descargar">
                                 <i class="bi bi-download"></i>
                             </a>
 
                             <?php if ($puedeEditar): ?>
-                                <button class="btn btn-sm btn-light text-success shadow-sm rounded-circle me-1" onclick="abrirModalVincular(<?= $d['id'] ?>, '<?= htmlspecialchars($d['nombre_original'], ENT_QUOTES) ?>')" title="Vincular a otra entidad">
+                                <button class="btn btn-sm btn-icon-theme text-success rounded-circle me-1" onclick="abrirModalVincular(<?= $d['id'] ?>, '<?= htmlspecialchars($d['nombre_original'], ENT_QUOTES) ?>')" title="Asociar a otra persona o evento">
                                     <i class="bi bi-link-45deg"></i>
                                 </button>
                             <?php endif; ?>
 
                             <?php if ($puedeEliminar): ?>
-                                <form action="" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar este archivo permanentemente del disco duro y base de datos?');">
+                                <form action="" method="POST" class="d-inline" onsubmit="return confirm('¿Eliminar este archivo permanentemente?');">
                                     <input type="hidden" name="accion" value="eliminar_documento">
                                     <input type="hidden" name="id" value="<?= $d['id'] ?>">
-                                    <button class="btn btn-sm btn-light text-danger shadow-sm rounded-circle" title="Eliminar"><i class="bi bi-trash"></i></button>
+                                    <button class="btn btn-sm btn-icon-theme text-danger rounded-circle" title="Eliminar"><i class="bi bi-trash"></i></button>
                                 </form>
                             <?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>
                 <?php else: ?>
-                    <tr><td colspan="6" class="text-center text-muted py-5"><i class="bi bi-folder-x fs-1 opacity-25 d-block mb-3"></i><h5>Repositorio Vacío</h5><p>Sube tu primer archivo institucional o expediente usando el botón superior.</p></td></tr>
+                    <tr><td colspan="6" class="text-center text-muted py-5"><i class="bi bi-folder-x fs-1 opacity-25 d-block mb-3"></i><h5>No hay archivos guardados</h5><p>Haz clic en <strong>Subir Documento</strong> para añadir el primero.</p></td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
     </div>
 </div>
 
-<!-- ========================================================= -->
-<!-- MODAL 1: SUBIR NUEVO ARCHIVO (CON FORM COMO MODAL-CONTENT) -->
-<!-- ========================================================= -->
+<!-- MODAL 1: SUBIR NUEVO DOCUMENTO -->
 <div class="modal fade" id="modalSubirDoc" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <form action="" method="POST" enctype="multipart/form-data" class="modal-content border-0 shadow-lg w-100" id="formSubirDoc">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title fw-bold"><i class="bi bi-cloud-upload me-2"></i>Subir Documento al Repositorio</h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-cloud-upload me-2"></i>Subir Nuevo Documento</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body bg-body-tertiary">
                 <input type="hidden" name="accion" value="subir_documento">
 
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">1. Archivo (PDF, Imágenes, Word, Excel)</label>
+                    <label class="form-label small fw-bold">1. Seleccionar Archivo (PDF, Imagen, Word o Excel)</label>
                     <input type="file" name="archivo" class="form-control shadow-sm" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx" required>
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">2. Categoría Documental</label>
+                    <label class="form-label small fw-bold">2. Tipo de Documento</label>
                     <select name="tipo_documento_id" class="form-select shadow-sm" required>
                         <?php foreach ($tiposDoc as $t): ?>
-                            <option value="<?= $t['id'] ?>"><?= $t['clave'] ?> - <?= htmlspecialchars($t['nombre']) ?></option>
+                            <option value="<?= $t['id'] ?>"><?= htmlspecialchars($t['nombre']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">3. Ámbito o Vinculación Inicial</label>
+                    <label class="form-label small fw-bold">3. ¿A quién pertenece este archivo?</label>
                     <select name="tabla_destino" id="subir_destino" class="form-select shadow-sm" onchange="toggleDestinoSubir()" required>
-                        <option value="institucional">🏛️ Archivo Institucional / Independiente (Sin vínculo)</option>
-                        <option value="personal">👤 Vincular a un Trabajador</option>
-                        <option value="cronograma_eventos">📅 Vincular a un Evento del Cronograma</option>
+                        <option value="institucional">Documento General de la Institución</option>
+                        <option value="personal">A un Trabajador</option>
+                        <option value="cronograma_eventos">A una Actividad o Evento</option>
                     </select>
                 </div>
 
-                <!-- BUSCADOR IMPORTABLE DE PERSONAL -->
                 <div class="mb-3 d-none" id="div_subir_personal">
-                    <label class="form-label small fw-bold text-primary">Seleccionar Trabajador:</label>
+                    <label class="form-label small fw-bold text-primary">Buscar Trabajador:</label>
                     <?php renderBuscadorTrabajador('sel_subir_personal', 'registro_id', 'Cédula, nombre, apellido o cargo...'); ?>
                 </div>
 
-                <!-- SELECTOR DE EVENTO -->
                 <div class="mb-3 d-none" id="div_subir_evento">
-                    <label class="form-label small fw-bold text-warning-emphasis">Seleccionar Evento:</label>
+                    <label class="form-label small fw-bold text-warning-emphasis">Seleccionar Actividad:</label>
                     <select name="registro_id" id="sel_subir_evento" class="form-select border-warning" disabled>
                         <?php foreach ($listaEventos as $ev): ?>
                             <option value="<?= $ev['id'] ?>"><?= date('d/m/Y', strtotime($ev['fecha'])) ?> - <?= htmlspecialchars($ev['titulo']) ?></option>
@@ -472,25 +450,23 @@ include '../Includes/sidebar.php';
                 </div>
 
                 <div class="mb-2">
-                    <label class="form-label small fw-bold">Notas / Descripción (Opcional)</label>
-                    <input type="text" name="notas" class="form-control form-control-sm" placeholder="Ej: Acta firmada por consejo docente...">
+                    <label class="form-label small fw-bold">Observaciones (Opcional)</label>
+                    <input type="text" name="notas" class="form-control form-control-sm" placeholder="Ej: Acta firmada por dirección...">
                 </div>
             </div>
             <div class="modal-footer border-0 bg-body">
-                <button type="submit" class="btn btn-primary w-100 fw-bold">Guardar y Sellar con SHA-256</button>
+                <button type="submit" class="btn btn-primary w-100 fw-bold">Guardar Documento</button>
             </div>
         </form>
     </div>
 </div>
 
-<!-- ========================================================= -->
-<!-- MODAL 2: VINCULAR DOCUMENTO EXISTENTE (ANCHO CÓMODO)      -->
-<!-- ========================================================= -->
+<!-- MODAL 2: ASOCIAR DOCUMENTO EXISTENTE -->
 <div class="modal fade" id="modalVincularExtra" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <form action="" method="POST" class="modal-content border-0 shadow-lg w-100" id="formVincularExtra">
             <div class="modal-header bg-success text-white">
-                <h5 class="modal-title fw-bold"><i class="bi bi-link-45deg me-1"></i>Añadir Vínculo a Documento</h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-link-45deg me-1"></i>Asociar Documento</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body bg-body-tertiary">
@@ -499,10 +475,10 @@ include '../Includes/sidebar.php';
                 <p class="small fw-bold text-center text-success mb-3 text-truncate" id="vinc_doc_nombre"></p>
 
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">Tipo de Entidad:</label>
+                    <label class="form-label small fw-bold">Asociar con:</label>
                     <select name="tabla_destino" id="vinc_destino" class="form-select shadow-sm" onchange="toggleDestinoVincular()">
-                        <option value="personal">👤 Trabajador</option>
-                        <option value="cronograma_eventos">📅 Evento del Cronograma</option>
+                        <option value="personal">Un Trabajador</option>
+                        <option value="cronograma_eventos">Una Actividad o Evento</option>
                     </select>
                 </div>
 
@@ -512,7 +488,7 @@ include '../Includes/sidebar.php';
                 </div>
 
                 <div class="mb-3 d-none" id="div_vinc_evento">
-                    <label class="form-label small fw-bold text-warning-emphasis">Evento:</label>
+                    <label class="form-label small fw-bold text-warning-emphasis">Actividad:</label>
                     <select name="registro_id" id="sel_vinc_evento" class="form-select border-warning" disabled>
                         <?php foreach ($listaEventos as $ev): ?>
                             <option value="<?= $ev['id'] ?>"><?= date('d/m/Y', strtotime($ev['fecha'])) ?> - <?= htmlspecialchars($ev['titulo']) ?></option>
@@ -521,15 +497,13 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
             <div class="modal-footer border-0 bg-body">
-                <button type="submit" class="btn btn-success w-100 fw-bold">Asociar Vínculo</button>
+                <button type="submit" class="btn btn-success w-100 fw-bold">Guardar Asociación</button>
             </div>
         </form>
     </div>
 </div>
 
-<!-- ========================================================= -->
-<!-- MODAL 3: VISOR INTEGRADO (IMÁGENES Y PDF OFFLINE)         -->
-<!-- ========================================================= -->
+<!-- MODAL 3: VISOR DE DOCUMENTOS -->
 <div class="modal fade" id="modalPrevisualizar" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg w-100">
@@ -544,7 +518,6 @@ include '../Includes/sidebar.php';
 </div>
 
 <script>
-// Toggle de selects en Subida
 function toggleDestinoSubir() {
     let val = document.getElementById('subir_destino').value;
     let divP = document.getElementById('div_subir_personal');
@@ -552,14 +525,13 @@ function toggleDestinoSubir() {
     let divE = document.getElementById('div_subir_evento');
     let selE = document.getElementById('sel_subir_evento');
 
-    divP.classList.add('d-none'); if(selP) selP.disabled = true;
-    divE.classList.add('d-none'); if(selE) selE.disabled = true;
+    divP.classList.add('d-none'); if (selP) selP.disabled = true;
+    divE.classList.add('d-none'); if (selE) selE.disabled = true;
 
-    if (val === 'personal') { divP.classList.remove('d-none'); if(selP) selP.disabled = false; }
-    if (val === 'cronograma_eventos') { divE.classList.remove('d-none'); if(selE) selE.disabled = false; }
+    if (val === 'personal') { divP.classList.remove('d-none'); if (selP) selP.disabled = false; }
+    if (val === 'cronograma_eventos') { divE.classList.remove('d-none'); if (selE) selE.disabled = false; }
 }
 
-// Toggle de selects en Vínculo Extra
 function toggleDestinoVincular() {
     let val = document.getElementById('vinc_destino').value;
     let divP = document.getElementById('div_vinc_personal');
@@ -567,24 +539,23 @@ function toggleDestinoVincular() {
     let divE = document.getElementById('div_vinc_evento');
     let selE = document.getElementById('sel_vinc_evento');
 
-    divP.classList.add('d-none'); if(selP) selP.disabled = true;
-    divE.classList.add('d-none'); if(selE) selE.disabled = true;
+    divP.classList.add('d-none'); if (selP) selP.disabled = true;
+    divE.classList.add('d-none'); if (selE) selE.disabled = true;
 
-    if (val === 'personal') { divP.classList.remove('d-none'); if(selP) selP.disabled = false; }
-    if (val === 'cronograma_eventos') { divE.classList.remove('d-none'); if(selE) selE.disabled = false; }
+    if (val === 'personal') { divP.classList.remove('d-none'); if (selP) selP.disabled = false; }
+    if (val === 'cronograma_eventos') { divE.classList.remove('d-none'); if (selE) selE.disabled = false; }
 }
 
-// Validación ergonómica antes de enviar para que no envíen trabajador vacío
 document.getElementById('formSubirDoc')?.addEventListener('submit', function(e) {
     if (document.getElementById('subir_destino').value === 'personal' && !document.getElementById('sel_subir_personal').value) {
         e.preventDefault();
-        alert('Por favor busca y haz clic sobre un trabajador de la lista desplegable.');
+        alert('Por favor busca y selecciona un trabajador de la lista.');
     }
 });
 document.getElementById('formVincularExtra')?.addEventListener('submit', function(e) {
     if (document.getElementById('vinc_destino').value === 'personal' && !document.getElementById('sel_vinc_personal').value) {
         e.preventDefault();
-        alert('Por favor busca y haz clic sobre un trabajador de la lista desplegable.');
+        alert('Por favor busca y selecciona un trabajador de la lista.');
     }
 });
 
@@ -627,9 +598,7 @@ document.getElementById('filtroEntidadDoc').addEventListener('change', aplicarFi
 document.addEventListener('DOMContentLoaded', () => {
     toggleDestinoSubir();
     toggleDestinoVincular();
-    if (document.getElementById('buscadorDocs').value.trim() !== '') {
-        aplicarFiltrosDocs();
-    }
+    if (document.getElementById('buscadorDocs').value.trim() !== '') aplicarFiltrosDocs();
 });
 </script>
 

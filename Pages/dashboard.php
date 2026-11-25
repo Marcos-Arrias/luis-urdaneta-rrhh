@@ -100,7 +100,7 @@ include '../Includes/sidebar.php';
         <p class="text-muted small mb-0">
             Bienvenido, <strong><?= htmlspecialchars($_SESSION['admin_user'] ?? 'Administrador') ?></strong>
             <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-1">
-                <i class="bi bi-shield-check me-1"></i><?= htmlspecialchars($perfil['rol_nombre'] ?? 'SuperAdministrador') ?> (ReBAC)
+                <i class="bi bi-shield-check me-1"></i><?= htmlspecialchars($perfil['rol_nombre'] ?? 'SuperAdministrador') ?>
             </span>
             · Hoy es <?= date('d/m/Y') ?>
         </p>

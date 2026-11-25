@@ -77,7 +77,7 @@ include '../Includes/sidebar.php';
     <li class="nav-item"><button class="nav-link active fw-bold" data-bs-toggle="pill" data-bs-target="#apariencia"><i class="bi bi-palette me-1"></i> Apariencia</button></li>
     <li class="nav-item"><button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#cargos"><i class="bi bi-tags me-1"></i> Cargos y Materias</button></li>
     <li class="nav-item"><button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#exportar"><i class="bi bi-cloud-arrow-down me-1"></i> Exportar</button></li>
-    <li class="nav-item"><button class="nav-link fw-bold text-success" data-bs-toggle="pill" data-bs-target="#importar"><i class="bi bi-cloud-arrow-up me-1"></i> Importar y Cargas</button></li>
+    <li class="nav-item"><button class="nav-link fw-bold text-success" data-bs-toggle="pill" data-bs-target="#importar"><i class="bi bi-cloud-arrow-up me-1"></i> Importar y Respaldos</button></li>
     <li class="nav-item"><button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#atajos"><i class="bi bi-keyboard me-1"></i> Atajos</button></li>
     <li class="nav-item"><button class="nav-link fw-bold" data-bs-toggle="pill" data-bs-target="#tutorial"><i class="bi bi-compass me-1"></i> Tutorial</button></li>
 </ul>
@@ -138,13 +138,9 @@ include '../Includes/sidebar.php';
                     <div id="collapseWallpaper" class="collapse">
                         <div class="card-body pt-0 pb-3 px-3 border-top">
                             <div class="row g-2 align-items-end pt-3 mb-3">
-                                <div class="col-sm-5">
+                                <div class="d-flex flex-column gap-1 col-sm-10">
                                     <label class="small fw-bold text-muted mb-1"><i class="bi bi-upload me-1"></i>Desde el PC:</label>
                                     <input type="file" id="bgImageInput" class="form-control form-control-sm" accept="image/*">
-                                </div>
-                                <div class="col-sm-5">
-                                    <label class="small fw-bold text-muted mb-1"><i class="bi bi-link-45deg me-1"></i>O Enlace (URL):</label>
-                                    <input type="url" id="bgUrlInput" class="form-control form-control-sm" placeholder="https://ejemplo.com/fondo.jpg">
                                 </div>
                                 <div class="col-sm-2">
                                     <button id="resetBgBtn" class="btn btn-outline-danger btn-sm w-100 fw-bold" onclick="quitarFondoCompleto()" title="Quitar fondo"><i class="bi bi-trash"></i></button>
@@ -524,8 +520,8 @@ include '../Includes/sidebar.php';
                     <div class="col-md-6 col-lg-4">
                         <div class="card text-center p-3 h-100 border-secondary shadow-sm">
                             <i class="bi bi-file-earmark-spreadsheet-fill text-secondary fs-1 mb-2"></i>
-                            <h6 class="fw-bold mb-1">CSV Plano</h6>
-                            <p class="small text-muted mb-3" style="font-size: 0.75rem;">Valores delimitados para sistemas externos.</p>
+                            <h6 class="fw-bold mb-1">Listado de Datos (.CSV)</h6>
+                            <p class="small text-muted mb-3" style="font-size: 0.75rem;">Archivo ligero compatible con Excel y hojas de cálculo.</p>
                             <button onclick="descargarReporte('csv')" class="btn btn-secondary btn-sm w-100 mt-auto"><i class="bi bi-download"></i> Descargar</button>
                         </div>
                     </div>
@@ -533,8 +529,8 @@ include '../Includes/sidebar.php';
                     <div class="col-md-6 col-lg-4">
                         <div class="card text-center p-3 h-100 border-warning shadow-sm">
                             <i class="bi bi-filetype-json text-warning fs-1 mb-2"></i>
-                            <h6 class="fw-bold mb-1">JSON Estructurado</h6>
-                            <p class="small text-muted mb-3" style="font-size: 0.75rem;">Respaldo completo MPPE, salud y cargos.</p>
+                            <h6 class="fw-bold mb-1">Copia de Seguridad (.JSON)</h6>
+                            <p class="small text-muted mb-3" style="font-size: 0.75rem;">Respaldo completo del personal para restaurar en caso de emergencia.</p>
                             <button onclick="descargarReporte('json')" class="btn btn-warning btn-sm w-100 mt-auto fw-bold text-dark"><i class="bi bi-download"></i> Respaldo JSON</button>
                         </div>
                     </div>
@@ -552,13 +548,13 @@ include '../Includes/sidebar.php';
         </div>
     </div>
 
-    <!-- PESTAÑA 4: IMPORTACIÓN Y CARGAS -->
+    <!-- PESTAÑA 4: IMPORTACIÓN Y RESPALDOS -->
     <div class="tab-pane fade" id="importar">
         <div class="row g-4">
             <div class="col-lg-6">
                 <div class="card shadow-sm border-0 h-100 border-top border-4 border-success">
                     <div class="card-body p-4">
-                        <h5 class="fw-bold text-success"><i class="bi bi-filetype-csv me-2"></i>Carga Masiva de Nómina (CSV)</h5>
+                        <h5 class="fw-bold text-success"><i class="bi bi-filetype-csv me-2"></i>Importar Listado desde Excel (.CSV)</h5>
                         <p class="small text-muted mb-3">Ideal para migrar listados extensos desde Excel hacia la base de datos.</p>
                         <div class="alert alert-success bg-success-subtle text-success-emphasis border-0 small mb-3">
                             <strong><i class="bi bi-info-circle-fill me-1"></i> Especificaciones:</strong>

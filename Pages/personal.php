@@ -602,7 +602,7 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
                         <div class="card-body panel-contenido-abierto">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <h6 class="text-warning-emphasis fw-bold mb-0">
-                                    <i class="bi bi-cloud-arrow-up-fill me-1 text-warning"></i> Subir Nuevos Archivos (Se envían a Archivos)
+                                    <i class="bi bi-cloud-arrow-up-fill me-1 text-warning"></i> Subir Documentos Nuevos
                                 </h6>
                                 <button type="button" class="btn btn-sm btn-icon-theme rounded-pill px-2 py-0" onclick="alternarPanelDoc('panelSubirDocs', true)" title="Minimizar a la izquierda">
                                     <i class="bi bi-chevron-bar-left"></i> Minimizar
@@ -633,7 +633,7 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
                         <div class="card-body panel-contenido-abierto">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <h6 class="text-info-emphasis fw-bold mb-0">
-                                    <i class="bi bi-link-45deg me-1 text-info"></i> Vincular desde Archivos Existentes
+                                    <i class="bi bi-link-45deg me-1 text-info"></i>  Usar Documentos Guardados 
                                 </h6>
                                 <button type="button" class="btn btn-sm btn-icon-theme rounded-pill px-2 py-0" onclick="alternarPanelDoc('panelVincularDocs', true)" title="Minimizar a la derecha">
                                     Minimizar <i class="bi bi-chevron-bar-right"></i>
