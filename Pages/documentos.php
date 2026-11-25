@@ -148,6 +148,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($doc) {
                 if (file_exists($doc['ruta_archivo'])) @unlink($doc['ruta_archivo']);
+                $rutaThumb = dirname($doc['ruta_archivo']) . '/thumbs/thumb_' . pathinfo($doc['ruta_archivo'], PATHINFO_FILENAME) . '.jpg';
+if (file_exists($rutaThumb)) @unlink($rutaThumb);
                 $pdo->prepare("DELETE FROM documentos WHERE id = ?")->execute([$docId]);
                 registrarHistorial($pdo, 'Documentos', 'ELIMINAR', "Eliminó el documento {$doc['codigo_archivo']}.", $docId);
             }
@@ -316,7 +318,7 @@ include '../Includes/sidebar.php';
                         <td class="ps-4">
                             <div class="d-flex align-items-center">
                                 <?php if ($esImagen && file_exists($d['ruta_archivo'])): ?>
-                                    <img src="<?= $d['ruta_archivo'] ?>" class="file-thumb me-3 border shadow-sm">
+                                    <img src="<?= htmlspecialchars(obtenerRutaMiniatura($d['ruta_archivo'])) ?>" class="file-thumb me-3 border shadow-sm" loading="lazy" alt="Miniatura">
                                 <?php elseif ($esPdf): ?>
                                     <div class="file-thumb me-3 bg-danger-subtle text-danger d-flex align-items-center justify-content-center fs-4 border"><i class="bi bi-file-earmark-pdf-fill"></i></div>
                                 <?php else: ?>
@@ -399,6 +401,22 @@ include '../Includes/sidebar.php';
             </tbody>
         </table>
     </div>
+
+    <div class="card-footer bg-body border-top py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+     <div class="d-flex align-items-center gap-2 small text-muted">
+         <span>Mostrar</span>
+         <select id="docsPorPagina" class="form-select form-select-sm" style="width: auto;">
+             <option value="10" selected>10</option>
+             <option value="25">25</option>
+             <option value="50">50</option>
+             <option value="999999">Todos</option>
+         </select>
+         <span id="docsInfoPaginacion">Mostrando 0 de 0</span>
+     </div>
+     <nav aria-label="Paginación de documentos">
+         <ul class="pagination pagination-sm mb-0" id="docsPaginacionUl"></ul>
+     </nav>
+ </div>
 </div>
 
 <!-- MODAL 1: SUBIR NUEVO DOCUMENTO -->
@@ -576,6 +594,7 @@ function previsualizarArchivo(ruta, titulo, mime) {
     }
     new bootstrap.Modal(document.getElementById('modalPrevisualizar')).show();
 }
+let docsPaginaActual = 1;
 
 function aplicarFiltrosDocs() {
     let txt = document.getElementById('buscadorDocs').value.toLowerCase();
@@ -586,10 +605,71 @@ function aplicarFiltrosDocs() {
         let coincideTxt = tr.innerText.toLowerCase().includes(txt);
         let coincideTipo = (tipo === 'todos' || tr.getAttribute('data-tipo') === tipo);
         let coincideEnt = (ent === 'todos' || tr.getAttribute('data-entidad').split(',').includes(ent));
-
-        tr.style.display = (coincideTxt && coincideTipo && coincideEnt) ? '' : 'none';
+        tr.dataset.match = (coincideTxt && coincideTipo && coincideEnt) ? '1' : '0';
     });
+
+    docsPaginaActual = 1;
+    renderizarPaginacionDocs();
 }
+
+function renderizarPaginacionDocs() {
+    const porPagina = parseInt(document.getElementById('docsPorPagina')?.value || '10', 10);
+    const todas = Array.from(document.querySelectorAll('#tablaDocumentos tbody tr.fila-doc'));
+    const coincidentes = todas.filter(tr => tr.dataset.match !== '0');
+    const total = coincidentes.length;
+    const totalPaginas = Math.max(1, Math.ceil(total / porPagina));
+    if (docsPaginaActual > totalPaginas) docsPaginaActual = totalPaginas;
+
+    const inicio = (docsPaginaActual - 1) * porPagina;
+    const fin = inicio + porPagina;
+
+    todas.forEach(tr => tr.style.display = 'none');
+    coincidentes.forEach((tr, idx) => {
+        tr.style.display = (idx >= inicio && idx < fin) ? '' : 'none';
+    });
+
+    const info = document.getElementById('docsInfoPaginacion');
+    if (info) {
+        info.innerText = total === 0
+            ? 'Sin documentos que coincidan'
+            : `Mostrando ${inicio + 1}–${Math.min(fin, total)} de ${total}`;
+    }
+
+    const ul = document.getElementById('docsPaginacionUl');
+    if (!ul) return;
+    ul.innerHTML = '';
+    if (totalPaginas <= 1) return;
+
+    const crearBtn = (texto, pag, deshabilitado, activo) => {
+        const li = document.createElement('li');
+        li.className = `page-item ${deshabilitado ? 'disabled' : ''} ${activo ? 'active' : ''}`;
+        const a = document.createElement('button');
+        a.type = 'button';
+        a.className = 'page-link';
+        a.innerHTML = texto;
+        if (!deshabilitado && !activo) {
+            a.onclick = () => { docsPaginaActual = pag; renderizarPaginacionDocs(); };
+        }
+        li.appendChild(a);
+        ul.appendChild(li);
+    };
+
+    crearBtn('&laquo;', docsPaginaActual - 1, docsPaginaActual === 1, false);
+    for (let p = 1; p <= totalPaginas; p++) {
+        if (p === 1 || p === totalPaginas || Math.abs(p - docsPaginaActual) <= 1) {
+            crearBtn(p, p, false, p === docsPaginaActual);
+        } else if (Math.abs(p - docsPaginaActual) === 2) {
+            crearBtn('...', p, true, false);
+        }
+    }
+    crearBtn('&raquo;', docsPaginaActual + 1, docsPaginaActual === totalPaginas, false);
+}
+
+document.getElementById('docsPorPagina')?.addEventListener('change', () => {
+    docsPaginaActual = 1;
+    renderizarPaginacionDocs();
+});
+document.addEventListener('DOMContentLoaded', () => { aplicarFiltrosDocs(); });
 
 document.getElementById('buscadorDocs').addEventListener('input', aplicarFiltrosDocs);
 document.getElementById('filtroTipoDoc').addEventListener('change', aplicarFiltrosDocs);

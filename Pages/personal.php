@@ -375,9 +375,7 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
                                     if ($tipo_id == 2) $avBg = 'bg-success text-white';
                                     if ($tipo_id == 3) $avBg = 'bg-warning text-dark';
                                     ?>
-                                    <div class="avatar-thumb me-3 <?= $avBg ?> d-flex align-items-center justify-content-center fw-bold shadow-sm">
-                                        <?= mb_strtoupper(mb_substr($d['nombres'], 0, 1, 'UTF-8') . mb_substr($d['apellidos'], 0, 1, 'UTF-8'), 'UTF-8') ?>
-                                    </div>
+                                    <img src="<?= htmlspecialchars(obtenerRutaMiniatura($d['ruta_foto_carnet']), ENT_QUOTES, 'UTF-8') ?>" class="avatar-thumb me-3 shadow-sm" loading="lazy" alt="Foto">
                                 <?php endif; ?>
                                 <div>
                                     <span class="fw-bold name-val d-block"><?= htmlspecialchars($d['apellidos'] . ', ' . $d['nombres'], ENT_QUOTES, 'UTF-8') ?></span>
@@ -440,6 +438,21 @@ include '../Includes/header.php'; include '../Includes/sidebar.php';
             </tbody>
         </table>
     </div>
+                    <div class="card-footer bg-body border-top py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+     <div class="d-flex align-items-center gap-2 small text-muted">
+         <span>Mostrar</span>
+         <select id="persPorPagina" class="form-select form-select-sm" style="width: auto;">
+             <option value="15" selected>15</option>
+             <option value="30">30</option>
+             <option value="50">50</option>
+             <option value="999999">Todos</option>
+         </select>
+         <span id="persInfoPaginacion">Mostrando 0 de 0</span>
+     </div>
+     <nav aria-label="Paginación de personal">
+         <ul class="pagination pagination-sm mb-0" id="persPaginacionUl"></ul>
+     </nav>
+ </div>
 </div>
 
 <!-- CONTENEDOR FLOTANTE PARA VISTA PREVIA DE IMÁGENES -->

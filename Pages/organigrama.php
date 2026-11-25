@@ -162,7 +162,9 @@ include '../Includes/sidebar.php';
         70% { box-shadow: 0 0 0 12px rgba(220, 53, 69, 0); }
         100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
     }
-    .pulse-warning { animation: pulse-red 1.5s infinite; }
+    .pulse-warning { animation: pulse-red 1.5s infinite; }´
+
+    #tree-container.esta-vacio #tree svg { opacity: 0 !important; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -180,7 +182,16 @@ include '../Includes/sidebar.php';
 
 <div class="card shadow-sm border-0 rounded-4 mb-4">
     <div class="card-body p-0">
-        <div id="tree-container"><div id="tree"></div></div>
+        <div id="tree-container">
+    <div id="organigramaVacioEstado" class="position-absolute top-50 start-50 translate-middle text-center p-4 d-none" style="z-index: 5; pointer-events: none;">
+        <div class="icon-circle bg-primary-subtle text-primary mx-auto mb-3" style="width: 72px; height: 72px;">
+            <i class="bi bi-diagram-3 fs-1"></i>
+        </div>
+        <h5 class="fw-bold mb-1">El organigrama está vacío</h5>
+        <p class="small text-muted mb-0">Haz clic en <strong>"Añadir Personal"</strong> arriba a la derecha para comenzar.</p>
+    </div>
+    <div id="tree"></div>
+</div>
     </div>
 </div>
 
@@ -372,6 +383,16 @@ include '../Includes/sidebar.php';
         nodeBinding: { field_0: "name", field_1: "title", img_0: "img" },
         nodes: dataTree
     });
+
+    function verificarOrganigramaVacio() {
+    let total = 0;
+    for (let k in chart.nodes) {
+        if (chart.nodes[k] && chart.nodes[k].id !== undefined) total++;
+    }
+    document.getElementById('tree-container').classList.toggle('esta-vacio', total === 0);
+    document.getElementById('organigramaVacioEstado').classList.toggle('d-none', total > 0);
+}
+verificarOrganigramaVacio();
 
     // ==========================================
     // SISTEMA DE DETECCIÓN DE CAMBIOS
@@ -620,6 +641,15 @@ include '../Includes/sidebar.php';
                 if(confirm("¿Seguro que desea quitar a " + node.name + " del esquema gráfico?")) {
                     chart.removeNode(id);
                     marcarComoModificado();
+                    function verificarOrganigramaVacio() {
+    let total = 0;
+    for (let k in chart.nodes) {
+        if (chart.nodes[k] && chart.nodes[k].id !== undefined) total++;
+    }
+    document.getElementById('tree-container').classList.toggle('esta-vacio', total === 0);
+    document.getElementById('organigramaVacioEstado').classList.toggle('d-none', total > 0);
+}
+verificarOrganigramaVacio();
                 }
             }
         }, 350); 
@@ -671,6 +701,16 @@ include '../Includes/sidebar.php';
             marcarComoModificado();
             bootstrap.Modal.getInstance(document.getElementById('modalAddNode')).hide();
         }
+        
+        function verificarOrganigramaVacio() {
+    let total = 0;
+    for (let k in chart.nodes) {
+        if (chart.nodes[k] && chart.nodes[k].id !== undefined) total++;
+    }
+    document.getElementById('tree-container').classList.toggle('esta-vacio', total === 0);
+    document.getElementById('organigramaVacioEstado').classList.toggle('d-none', total > 0);
+}
+verificarOrganigramaVacio();
     }
 
     function confirmarEdicionPosicion() {
@@ -690,6 +730,15 @@ include '../Includes/sidebar.php';
         if(confirm('¿Seguro que desea limpiar todo el esquema visual? (Recuerde guardar para sincronizar).')) {
             chart.load([]); 
             marcarComoModificado();
+            function verificarOrganigramaVacio() {
+    let total = 0;
+    for (let k in chart.nodes) {
+        if (chart.nodes[k] && chart.nodes[k].id !== undefined) total++;
+    }
+    document.getElementById('tree-container').classList.toggle('esta-vacio', total === 0);
+    document.getElementById('organigramaVacioEstado').classList.toggle('d-none', total > 0);
+}
+verificarOrganigramaVacio();
         }
     }
 

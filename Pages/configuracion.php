@@ -249,7 +249,7 @@ include '../Includes/sidebar.php';
                     <div class="card-body text-center py-4">
                         <i class="bi bi-grid-3x3-gap-fill fs-1 mb-2 text-primary"></i>
                         <h5 class="fw-bold mb-1">Fondo Ambiental</h5>
-                        <small class="text-muted d-block mb-3">Textura cuando no hay wallpaper</small>
+                        <small class="text-muted d-block mb-3">Fondo decorativo del sistema</small>
                         <select id="selectBgPattern" class="form-select form-select-sm shadow-sm border-0 bg-body-tertiary fw-bold">
                             <option value="solid">Sólido Estándar</option>
                             <option value="gradient">Degradado Suave</option>
@@ -575,7 +575,7 @@ include '../Includes/sidebar.php';
             <div class="col-lg-6">
                 <div class="card shadow-sm border-0 h-100 border-top border-4 border-primary">
                     <div class="card-body p-4">
-                        <h5 class="fw-bold text-primary"><i class="bi bi-folder-plus me-2"></i>Digitalización Individual en Clave</h5>
+                        <h5 class="fw-bold text-primary"><i class="bi bi-folder-plus me-2"></i>Subir Documento a un Trabajador</h5>
                         <p class="small text-muted mb-3">Sube soportes vinculados directamente a un trabajador.</p>
                         <form action="../PHP/importar.php" method="POST" enctype="multipart/form-data">
                             <input type="hidden" name="tipo_importacion" value="documento_personal">
@@ -608,7 +608,7 @@ include '../Includes/sidebar.php';
             <div class="col-12">
                 <div class="card shadow-sm border-0 border-top border-4 border-warning bg-body-tertiary">
                     <div class="card-body p-4">
-                        <h5 class="fw-bold mb-1 text-warning-emphasis"><i class="bi bi-database-fill-up me-2 text-warning"></i>Restaurar Respaldo Estructurado (JSON)</h5>
+                        <h5 class="fw-bold mb-1 text-warning-emphasis"><i class="bi bi-database-fill-up me-2 text-warning"></i>Restaurar Copia de Seguridad</h5>
                         <p class="small text-muted mb-3">Recuperación o sincronización integral de trabajadores con expediente MPPE.</p>
                         <form action="../PHP/importar.php" method="POST" enctype="multipart/form-data" class="d-flex gap-2">
                             <input type="hidden" name="tipo_importacion" value="json_restore">
@@ -667,43 +667,6 @@ include '../Includes/sidebar.php';
     <div class="tab-pane fade" id="tutorial">
         <?php include '../Includes/manual_usuario.php'; ?>
     </div>
-
-        <div class="row g-3">
-            <div class="col-md-6 col-lg-4">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center mb-2">
-                            <span class="icon-circle bg-primary-subtle text-primary me-2" style="width:38px;height:38px;"><i class="bi bi-people-fill"></i></span>
-                            <h6 class="fw-bold mb-0">Expedientes y Traslados</h6>
-                        </div>
-                        <p class="small text-muted mb-0">Gestiona docentes, administrativos y obreros. Selecciona múltiples casillas en la tabla para trasladarlos entre categorías o subir múltiples documentos sellados con SHA-256.</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-6 col-lg-4">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center mb-2">
-                            <span class="icon-circle bg-success-subtle text-success me-2" style="width:38px;height:38px;"><i class="bi bi-lightning-charge-fill"></i></span>
-                            <h6 class="fw-bold mb-0">Asistencia Rápida y Cierre</h6>
-                        </div>
-                        <p class="small text-muted mb-0">Usa la barra superior de cédula para marcar entradas y salidas con Enter. Al finalizar el día según el reloj interno, las jornadas abiertas se cierran y los ausentes quedan registrados.</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-6 col-lg-4">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center mb-2">
-                            <span class="icon-circle bg-info-subtle text-info me-2" style="width:38px;height:38px;"><i class="bi bi-diagram-3-fill"></i></span>
-                            <h6 class="fw-bold mb-0">Organigrama y ReBAC</h6>
-                        </div>
-                        <p class="small text-muted mb-0">Construye la jerarquía institucional arrastrando nodos, exporta en formato monocromático sin internet y vincula documentos independientes desde el Archivo Digital.</p>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 

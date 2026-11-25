@@ -554,6 +554,61 @@ function formatearTelefono($telefono) {
     return '<span class="text-body fw-medium"><i class="bi bi-telephone-fill text-success me-2"></i>' . htmlspecialchars($tel) . '</span>';
 }
 
+function obtenerRutaMiniatura($rutaOriginal) {
+    if (empty($rutaOriginal) || !file_exists($rutaOriginal)) return $rutaOriginal;
+    $ext = strtolower(pathinfo($rutaOriginal, PATHINFO_EXTENSION));
+    if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'])) return $rutaOriginal;
+    if (!extension_loaded('gd')) return $rutaOriginal;
+
+    $dirThumbs = dirname($rutaOriginal) . '/thumbs';
+    if (!file_exists($dirThumbs)) @mkdir($dirThumbs, 0777, true);
+
+    $base = pathinfo($rutaOriginal, PATHINFO_FILENAME);
+    $rutaThumb = $dirThumbs . '/thumb_' . $base . '.jpg';
+
+    if (file_exists($rutaThumb)) return $rutaThumb;
+
+    $info = @getimagesize($rutaOriginal);
+    if (!$info) return $rutaOriginal;
+    [$w, $h, $tipo] = $info;
+    if ($w <= 0 || $h <= 0) return $rutaOriginal;
+
+    $src = null;
+    if ($tipo === IMAGETYPE_JPEG) $src = @imagecreatefromjpeg($rutaOriginal);
+    elseif ($tipo === IMAGETYPE_PNG) $src = @imagecreatefrompng($rutaOriginal);
+    elseif ($tipo === IMAGETYPE_WEBP && function_exists('imagecreatefromwebp')) $src = @imagecreatefromwebp($rutaOriginal);
+    elseif ($tipo === IMAGETYPE_GIF) $src = @imagecreatefromgif($rutaOriginal);
+    if (!$src) return $rutaOriginal;
+
+    // Corregir rotación automática de fotos tomadas verticalmente
+    if ($tipo === IMAGETYPE_JPEG && function_exists('exif_read_data')) {
+        $exif = @exif_read_data($rutaOriginal);
+        if (!empty($exif['Orientation'])) {
+            switch ($exif['Orientation']) {
+                case 3: $src = imagerotate($src, 180, 0); break;
+                case 6: $src = imagerotate($src, -90, 0); [$w, $h] = [$h, $w]; break;
+                case 8: $src = imagerotate($src, 90, 0); [$w, $h] = [$h, $w]; break;
+            }
+        }
+    }
+
+    $maxDim = 150;
+    $ratio = min($maxDim / $w, $maxDim / $h, 1);
+    $nw = max(1, (int)round($w * $ratio));
+    $nh = max(1, (int)round($h * $ratio));
+
+    $dst = imagecreatetruecolor($nw, $nh);
+    $blanco = imagecolorallocate($dst, 255, 255, 255);
+    imagefill($dst, 0, 0, $blanco);
+    imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
+
+    @imagejpeg($dst, $rutaThumb, 72);
+    imagedestroy($src);
+    imagedestroy($dst);
+
+    return file_exists($rutaThumb) ? $rutaThumb : $rutaOriginal;
+}
+
 function tienePermisoReBAC($pdo, $usuario_id, $nombre_recurso, $accion = 'leer', $objeto_id = 0) {
     if (empty($usuario_id)) return false;
 
