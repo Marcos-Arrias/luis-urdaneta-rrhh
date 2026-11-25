@@ -992,5 +992,334 @@
     }
    
 </script>
+
+<!-- AVISO FLOTANTE DE BORRADOR GUARDADO -->
+    <div id="qol-draft-toast" class="card shadow-lg border-0 border-start border-4 border-warning position-fixed d-none" style="bottom: 22px; right: 22px; z-index: 1085; max-width: 340px;">
+        <div class="card-body p-3 d-flex align-items-center justify-content-between gap-2">
+            <div class="overflow-hidden">
+                <div class="small fw-bold text-warning-emphasis text-truncate" id="qolDraftTitulo">
+                    <i class="bi bi-pencil-square me-1"></i> Borrador guardado
+                </div>
+                <small class="text-muted d-block text-truncate" id="qolDraftSub">Sin finalizar</small>
+            </div>
+            <div class="d-flex align-items-center gap-1 flex-shrink-0">
+                <button type="button" class="btn btn-warning btn-sm fw-bold rounded-pill px-3 text-dark" id="qolDraftBtnContinuar">
+                    Continuar
+                </button>
+                <button type="button" class="btn btn-sm btn-icon-theme rounded-circle" id="qolDraftBtnDescartar" title="Descartar borrador" aria-label="Descartar borrador">
+                    <i class="bi bi-x-lg text-danger"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // =========================================================================
+    // QoL: MEMORIA DE PESTAÑAS + BORRADORES AUTOMÁTICOS ENTRE SECCIONES
+    // =========================================================================
+    document.addEventListener("DOMContentLoaded", () => {
+
+        // ---------------------------------------------------------------------
+        // 1. MEMORIA DE PESTAÑAS ACTIVAS (CONFIGURACIÓN, MANUAL, ETC.)
+        // ---------------------------------------------------------------------
+        const rutaActual = window.location.pathname + window.location.search;
+        const tabStorageKey = 'qol_tab_activa::' + window.location.pathname;
+
+        // Restaurar pestaña si no hay hash explícito en la URL ni tour activo
+        if (!window.location.hash && localStorage.getItem('tour_activo') !== 'true') {
+            const tabGuardada = localStorage.getItem(tabStorageKey);
+            if (tabGuardada) {
+                const btnTab = document.querySelector(`[data-bs-toggle="pill"][data-bs-target="${tabGuardada}"], [data-bs-toggle="tab"][data-bs-target="${tabGuardada}"]`);
+                if (btnTab && typeof bootstrap !== 'undefined') {
+                    bootstrap.Tab.getOrCreateInstance(btnTab).show();
+                }
+            }
+        }
+
+        // Guardar pestaña cada vez que el usuario cambie de pestaña
+        document.querySelectorAll('[data-bs-toggle="pill"], [data-bs-toggle="tab"]').forEach(btn => {
+            btn.addEventListener('shown.bs.tab', (e) => {
+                const target = e.target.getAttribute('data-bs-target');
+                if (!target) return;
+                // Guardar pestañas principales y capítulos del manual por separado
+                if (target.startsWith('#man-sec-')) {
+                    localStorage.setItem('qol_manual_capitulo', target);
+                } else {
+                    localStorage.setItem(tabStorageKey, target);
+                }
+            });
+        });
+
+        // Restaurar capítulo del manual si existía
+        const capGuardado = localStorage.getItem('qol_manual_capitulo');
+        if (capGuardado) {
+            const btnCap = document.querySelector(`[data-bs-target="${capGuardado}"]`);
+            if (btnCap && typeof bootstrap !== 'undefined') {
+                bootstrap.Tab.getOrCreateInstance(btnCap).show();
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // 2. SISTEMA DE BORRADORES AUTOMÁTICOS PARA FORMULARIOS EN MODALES
+        // ---------------------------------------------------------------------
+        const DRAFT_KEY = 'qol_borrador_global_v1';
+        const MODALES_EXCLUIDOS = ['modalBusquedaAvanzada', 'modalBienvenidaTutorial', 'modalPrevisualizar', 'modalElegirTipoPersonal', 'modalOpcionesNodo', 'modalVerDetalles', 'modalBulkMove', 'modalModoPortable', 'modalSolicitudPortable'];
+
+        function leerBorradorGlobal() {
+            try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch (e) { return null; }
+        }
+
+        function guardarBorradorGlobal(obj) {
+            localStorage.setItem(DRAFT_KEY, JSON.stringify(obj));
+            actualizarToastBorrador();
+        }
+
+        function limpiarBorradorGlobal() {
+            localStorage.removeItem(DRAFT_KEY);
+            actualizarToastBorrador();
+        }
+
+        function extraerDatosFormulario(form) {
+            const datos = {};
+            form.querySelectorAll('input, select, textarea').forEach(el => {
+                if (['file', 'password', 'submit', 'button', 'reset'].includes(el.type)) return;
+                const key = el.name || (el.id ? '#id:' + el.id : '');
+                if (!key) return;
+
+                if (el.type === 'checkbox') {
+                    if (!datos[key]) datos[key] = [];
+                    if (el.checked) datos[key].push(el.value || 'on');
+                } else if (el.type === 'radio') {
+                    if (el.checked) datos[key] = el.value;
+                } else if (el.tagName === 'SELECT' && el.multiple) {
+                    datos[key] = Array.from(el.selectedOptions).map(o => o.value);
+                } else {
+                    datos[key] = el.value;
+                }
+            });
+            return datos;
+        }
+
+        function aplicarDatosFormulario(form, datos) {
+            if (!datos) return;
+
+            const asignarValor = (el, val) => {
+                if (el.type === 'checkbox') {
+                    const arr = Array.isArray(val) ? val : [];
+                    el.checked = arr.includes(el.value || 'on');
+                } else if (el.type === 'radio') {
+                    el.checked = (el.value === val);
+                } else if (el.tagName === 'SELECT' && el.multiple) {
+                    const arr = Array.isArray(val) ? val.map(String) : [];
+                    Array.from(el.options).forEach(opt => opt.selected = arr.includes(String(opt.value)));
+                } else {
+                    el.value = val;
+                }
+            };
+
+            // Pasada 1: campos principales y selectores padre (ej: select_tipo en asistencias)
+            form.querySelectorAll('input, select, textarea').forEach(el => {
+                if (['file', 'password', 'submit', 'button', 'reset'].includes(el.type)) return;
+                const key = el.name || (el.id ? '#id:' + el.id : '');
+                if (!key || datos[key] === undefined) return;
+                asignarValor(el, datos[key]);
+                if (el.tagName === 'SELECT' && !el.name && typeof el.onchange === 'function') {
+                    el.dispatchEvent(new Event('change'));
+                }
+            });
+
+            // Pasada 2: selects dependientes que se habilitan tras el onchange (ej: select_persona)
+            setTimeout(() => {
+                form.querySelectorAll('select').forEach(el => {
+                    const key = el.name || (el.id ? '#id:' + el.id : '');
+                    if (!key || datos[key] === undefined) return;
+                    asignarValor(el, datos[key]);
+                });
+            }, 60);
+
+            // Si en Personal había datos dentro de la Ficha MPPE colapsada, expandirla
+            const colMppe = form.querySelector('#datosMiscelaneos');
+            if (colMppe && typeof bootstrap !== 'undefined') {
+                const tieneExtras = ['cargo_nominal', 'dependencia', 'direccion_habitacion', 'banco_nomina'].some(k => datos[k] && String(datos[k]).trim() !== '');
+                if (tieneExtras) bootstrap.Collapse.getOrCreateInstance(colMppe, { toggle: false }).show();
+            }
+        }
+
+        function mostrarBannerDentroModal(modalEl) {
+            const body = modalEl.querySelector('.modal-body');
+            if (!body) return;
+            let banner = modalEl.querySelector('.qol-draft-modal-banner');
+            if (!banner) {
+                banner = document.createElement('div');
+                banner.className = 'alert alert-warning bg-warning-subtle text-warning-emphasis border-0 py-2 px-3 small d-flex justify-content-between align-items-center mb-3 qol-draft-modal-banner';
+                banner.innerHTML = `
+                    <span><i class="bi bi-pencil-square me-1"></i> <strong>Borrador recuperado:</strong> Continuando donde lo dejaste.</span>
+                    <button type="button" class="btn btn-sm btn-outline-danger rounded-pill py-0 px-2 fw-bold qol-btn-limpiar-borrador">Descartar</button>
+                `;
+                body.prepend(banner);
+                banner.querySelector('.qol-btn-limpiar-borrador').addEventListener('click', () => {
+                    limpiarBorradorGlobal();
+                    banner.remove();
+                    modalEl.dataset.userEdited = '0';
+                    const form = modalEl.querySelector('form') || modalEl.closest('form');
+                    if (form) form.reset();
+                    if (typeof window.limpiarFormulario === 'function') window.limpiarFormulario();
+                });
+            }
+        }
+
+        function actualizarToastBorrador() {
+            const toast = document.getElementById('qol-draft-toast');
+            if (!toast) return;
+            if (localStorage.getItem('tour_activo') === 'true') {
+                toast.classList.add('d-none');
+                return;
+            }
+            const b = leerBorradorGlobal();
+            if (!b || !b.url || !b.modalId) {
+                toast.classList.add('d-none');
+                return;
+            }
+
+            // Ocultar el aviso si ese mismo modal está abierto justo ahora en pantalla
+            const modalMismo = document.getElementById(b.modalId);
+            if (b.url === rutaActual && modalMismo && modalMismo.classList.contains('show')) {
+                toast.classList.add('d-none');
+                return;
+            }
+
+            document.getElementById('qolDraftTitulo').innerHTML = `<i class="bi bi-pencil-square me-1"></i> Borrador: ${b.titulo || 'Formulario'}`;
+            document.getElementById('qolDraftSub').innerText = (b.url === rutaActual) ? 'En esta sección' : 'En otra sección · Haz clic para volver';
+            toast.classList.remove('d-none');
+        }
+
+        document.getElementById('qolDraftBtnContinuar')?.addEventListener('click', () => {
+            const b = leerBorradorGlobal();
+            if (!b) return;
+            if (b.url !== rutaActual) {
+                const sep = b.url.includes('?') ? '&' : '?';
+                window.location.href = b.url + sep + 'qol_restore=1';
+            } else {
+                const modalEl = document.getElementById(b.modalId);
+                if (modalEl && typeof bootstrap !== 'undefined') {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    const form = modalEl.querySelector('form') || modalEl.closest('form');
+                    if (form) {
+                        setTimeout(() => {
+                            aplicarDatosFormulario(form, b.datos);
+                            mostrarBannerDentroModal(modalEl);
+                        }, 80);
+                    }
+                }
+            }
+        });
+
+        document.getElementById('qolDraftBtnDescartar')?.addEventListener('click', () => {
+            limpiarBorradorGlobal();
+        });
+
+        // Registrar listeners en todos los modales con formulario de la página
+        document.querySelectorAll('.modal').forEach(modalEl => {
+            const modalId = modalEl.id;
+            if (!modalId || MODALES_EXCLUIDOS.includes(modalId)) return;
+            const form = modalEl.querySelector('form') || (modalEl.closest('form') ? modalEl.closest('form') : null);
+            if (!form) return;
+
+            const tituloModal = modalEl.querySelector('.modal-title')?.innerText?.trim() || 'Formulario';
+
+            const guardarAhora = () => {
+                if (modalEl.dataset.userEdited !== '1') return;
+                guardarBorradorGlobal({
+                    url: rutaActual,
+                    modalId: modalId,
+                    titulo: tituloModal,
+                    datos: extraerDatosFormulario(form)
+                });
+            };
+
+            // Detectar escritura o cambio real del usuario
+            form.addEventListener('input', (e) => {
+                if (!modalEl.contains(e.target) && form !== modalEl.querySelector('form')) return;
+                if (['file', 'password'].includes(e.target.type)) return;
+                modalEl.dataset.userEdited = '1';
+                guardarAhora();
+            });
+            form.addEventListener('change', (e) => {
+                if (!modalEl.contains(e.target) && form !== modalEl.querySelector('form')) return;
+                if (['file', 'password'].includes(e.target.type)) return;
+                modalEl.dataset.userEdited = '1';
+                guardarAhora();
+            });
+
+            // Si hace clic en "X" o "Cancelar", descartar el borrador explícitamente
+            modalEl.querySelectorAll('.btn-close, [data-bs-dismiss="modal"]').forEach(btnCerrar => {
+                btnCerrar.addEventListener('click', () => {
+                    const b = leerBorradorGlobal();
+                    if (b && b.url === rutaActual && b.modalId === modalId) {
+                        limpiarBorradorGlobal();
+                    }
+                    modalEl.dataset.userEdited = '0';
+                    modalEl.querySelector('.qol-draft-modal-banner')?.remove();
+                });
+            });
+
+            // Si envía el formulario (Guardar), limpiar el borrador
+            form.addEventListener('submit', () => {
+                limpiarBorradorGlobal();
+            });
+
+            // Al abrir el modal en modo "crear", restaurar borrador automáticamente si corresponde
+            modalEl.addEventListener('shown.bs.modal', () => {
+                actualizarToastBorrador();
+                const b = leerBorradorGlobal();
+                if (!b || b.url !== rutaActual || b.modalId !== modalId) return;
+
+                const accionInput = form.querySelector('input[name="accion"]');
+                const esAccionCrear = !accionInput || accionInput.value === 'crear' || accionInput.value === 'subir_documento' || accionInput.value === 'crear_cargo';
+                const bAccion = b.datos?.accion || '';
+
+                // Restaurar si ambos son crear, o si está editando exactamente el mismo ID
+                if (esAccionCrear && (!bAccion || bAccion === 'crear' || bAccion === 'subir_documento' || bAccion === 'crear_cargo')) {
+                    setTimeout(() => {
+                        aplicarDatosFormulario(form, b.datos);
+                        mostrarBannerDentroModal(modalEl);
+                    }, 70);
+                }
+            });
+
+            modalEl.addEventListener('hidden.bs.modal', () => {
+                setTimeout(actualizarToastBorrador, 100);
+            });
+        });
+
+        // Si venimos de hacer clic en "Continuar" desde otra página (?qol_restore=1)
+        const paramsQol = new URLSearchParams(window.location.search);
+        if (paramsQol.get('qol_restore') === '1') {
+            paramsQol.delete('qol_restore');
+            const qsLimpio = paramsQol.toString();
+            const nuevaUrl = window.location.pathname + (qsLimpio ? '?' + qsLimpio : '');
+            window.history.replaceState(null, '', nuevaUrl);
+
+            const b = leerBorradorGlobal();
+            if (b && b.modalId) {
+                const modalEl = document.getElementById(b.modalId);
+                if (modalEl && typeof bootstrap !== 'undefined') {
+                    setTimeout(() => {
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                        const form = modalEl.querySelector('form') || modalEl.closest('form');
+                        if (form) {
+                            setTimeout(() => {
+                                aplicarDatosFormulario(form, b.datos);
+                                mostrarBannerDentroModal(modalEl);
+                            }, 90);
+                        }
+                    }, 200);
+                }
+            }
+        }
+
+        actualizarToastBorrador();
+    });
+    </script>
 </body>
 </html>
