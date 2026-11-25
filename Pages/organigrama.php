@@ -384,15 +384,7 @@ include '../Includes/sidebar.php';
         nodes: dataTree
     });
 
-    function verificarOrganigramaVacio() {
-    let total = 0;
-    for (let k in chart.nodes) {
-        if (chart.nodes[k] && chart.nodes[k].id !== undefined) total++;
-    }
-    document.getElementById('tree-container').classList.toggle('esta-vacio', total === 0);
-    document.getElementById('organigramaVacioEstado').classList.toggle('d-none', total > 0);
-}
-verificarOrganigramaVacio();
+    
 
     // ==========================================
     // SISTEMA DE DETECCIÓN DE CAMBIOS
@@ -641,15 +633,6 @@ verificarOrganigramaVacio();
                 if(confirm("¿Seguro que desea quitar a " + node.name + " del esquema gráfico?")) {
                     chart.removeNode(id);
                     marcarComoModificado();
-                    function verificarOrganigramaVacio() {
-    let total = 0;
-    for (let k in chart.nodes) {
-        if (chart.nodes[k] && chart.nodes[k].id !== undefined) total++;
-    }
-    document.getElementById('tree-container').classList.toggle('esta-vacio', total === 0);
-    document.getElementById('organigramaVacioEstado').classList.toggle('d-none', total > 0);
-}
-verificarOrganigramaVacio();
                 }
             }
         }, 350); 
@@ -730,15 +713,6 @@ verificarOrganigramaVacio();
         if(confirm('¿Seguro que desea limpiar todo el esquema visual? (Recuerde guardar para sincronizar).')) {
             chart.load([]); 
             marcarComoModificado();
-            function verificarOrganigramaVacio() {
-    let total = 0;
-    for (let k in chart.nodes) {
-        if (chart.nodes[k] && chart.nodes[k].id !== undefined) total++;
-    }
-    document.getElementById('tree-container').classList.toggle('esta-vacio', total === 0);
-    document.getElementById('organigramaVacioEstado').classList.toggle('d-none', total > 0);
-}
-verificarOrganigramaVacio();
         }
     }
 

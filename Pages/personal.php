@@ -1010,6 +1010,8 @@ document.querySelectorAll('th.sortable').forEach(th => th.addEventListener('clic
         .forEach(tr => tbody.appendChild(tr));
 })));
 
+renderizarPaginacionPersonal()
+
 let dragColIndex = null;
 function dragStart(e) { dragColIndex = Array.from(e.target.parentNode.children).indexOf(e.target); e.dataTransfer.effectAllowed = "move"; }
 function dragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }
@@ -1083,6 +1085,45 @@ document.addEventListener("DOMContentLoaded", () => {
         window.history.replaceState(null, '', window.location.pathname + '?tipo=' + urlParams.get('tipo'));
     }
 });
+
+let persPaginaActual = 1;
+function renderizarPaginacionPersonal() {
+    const porPagina = parseInt(document.getElementById('persPorPagina')?.value || '15', 10);
+    const filas = Array.from(document.querySelectorAll('#tablaPersonal tbody tr.fila-personal'));
+    const total = filas.length;
+    const totalPaginas = Math.max(1, Math.ceil(total / porPagina));
+    if (persPaginaActual > totalPaginas) persPaginaActual = totalPaginas;
+
+    const inicio = (persPaginaActual - 1) * porPagina;
+    const fin = inicio + porPagina;
+
+    filas.forEach((tr, idx) => { tr.style.display = (idx >= inicio && idx < fin) ? '' : 'none'; });
+
+    const info = document.getElementById('persInfoPaginacion');
+    if (info) info.innerText = total === 0 ? 'Sin registros' : `Mostrando ${inicio + 1}–${Math.min(fin, total)} de ${total}`;
+
+    const ul = document.getElementById('persPaginacionUl');
+    if (!ul) return;
+    ul.innerHTML = '';
+    if (totalPaginas <= 1) return;
+
+    const crearBtn = (txt, pag, dis, act) => {
+        const li = document.createElement('li');
+        li.className = `page-item ${dis ? 'disabled' : ''} ${act ? 'active' : ''}`;
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'page-link'; b.innerHTML = txt;
+        if (!dis && !act) b.onclick = () => { persPaginaActual = pag; renderizarPaginacionPersonal(); };
+        li.appendChild(b); ul.appendChild(li);
+    };
+    crearBtn('&laquo;', persPaginaActual - 1, persPaginaActual === 1, false);
+    for (let p = 1; p <= totalPaginas; p++) {
+        if (p === 1 || p === totalPaginas || Math.abs(p - persPaginaActual) <= 1) crearBtn(p, p, false, p === persPaginaActual);
+        else if (Math.abs(p - persPaginaActual) === 2) crearBtn('...', p, true, false);
+    }
+    crearBtn('&raquo;', persPaginaActual + 1, persPaginaActual === totalPaginas, false);
+}
+document.getElementById('persPorPagina')?.addEventListener('change', () => { persPaginaActual = 1; renderizarPaginacionPersonal(); });
+document.addEventListener('DOMContentLoaded', () => { renderizarPaginacionPersonal(); });
 </script>
 
 <?php include '../Includes/footer.php'; ?>
