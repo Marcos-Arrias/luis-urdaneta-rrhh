@@ -83,156 +83,44 @@ if (isset($_SESSION['admin_id'])) {
                         <h3 class="text-center mb-1 fw-bold">Portal RRHH</h3>
                         <p class="text-center text-muted small mb-4">U.E.N Luis Urdaneta</p>
 
-                        <?php if (isset($_SESSION['pc_en_modo_portable']) && $_SESSION['pc_en_modo_portable'] === true): ?>
-                            <!-- 1. PANEL DE CONTROL EN LA COMPUTADORA PRINCIPAL -->
-                            <div class="text-center py-2">
-                                <div class="icon-circle bg-success-subtle text-success mx-auto mb-3" style="width: 68px; height: 68px;">
-                                    <i class="bi bi-phone-fill fs-1"></i>
-                                </div>
-                                <h5 class="fw-bold mb-1">Modo Portable Activo</h5>
-                                <p class="small text-muted mb-3">El smartphone está utilizando el sistema en este momento.</p>
-
-                                <div class="card border-0 bg-body-tertiary p-3 rounded-3 mb-3 text-start small">
-                                    <div><strong>Estado:</strong> <span id="monEstadoTel" class="badge bg-success">Conectado</span></div>
-                                    <div><strong>Dispositivo:</strong> <span id="monDispTel">Verificando...</span></div>
-                                    <div><strong>IP:</strong> <span id="monIpTel">-</span></div>
-                                </div>
-
-                                <div class="d-grid">
-                                    <button type="button" class="btn btn-danger rounded-pill fw-bold py-2 shadow-sm" onclick="desconectarTelefonoYRetomar()">
-                                        <i class="bi bi-power me-1"></i> Desconectar Teléfono y Retomar Control
-                                    </button>
-                                </div>
+                        <?php if (isset($_GET['error'])): ?>
+                            <div class="alert alert-danger text-center py-2 shadow-sm small" role="alert">
+                                <i class="bi bi-shield-x me-1"></i> Credenciales inválidas o cuenta bloqueada.
                             </div>
-                            <script>
-                                setInterval(async () => {
-                                    try {
-                                        const res = await fetch('PHP/ajax_modo_portable.php?accion=estado_monitor_pc');
-                                        const d = await res.json();
-                                        if (!d.activo) { window.location.href = 'index.php'; return; }
-                                        const est = document.getElementById('monEstadoTel');
-                                        if (d.telefono_conectado) {
-                                            est.className = 'badge bg-success';
-                                            est.innerText = 'En línea (' + d.inicio + ')';
-                                            document.getElementById('monDispTel').innerText = d.dispositivo;
-                                            document.getElementById('monIpTel').innerText = d.ip;
-                                        } else {
-                                            est.className = 'badge bg-secondary';
-                                            est.innerText = 'Desconectado / Cerró sesión';
-                                        }
-                                    } catch (e) {}
-                                }, 3000);
-                                elseif (isset($_GET['desconectado_pc']))
-                                async function desconectarTelefonoYRetomar() {
-                                    const fd = new FormData();
-                                    fd.append('accion', 'desconectar_telefono');
-                                    const res = await fetch('PHP/ajax_modo_portable.php', { method: 'POST', body: fd });
-                                    const data = await res.json();
-                                    if (data.success) window.location.href = 'Pages/dashboard.php';
-                                }
-                            </script>
-
-                        <?php elseif (isset($_GET['espera_portable']) && isset($_SESSION['portable_espera_token'])): ?>
-                            <!-- 2. PANTALLA DE ESPERA EN EL SMARTPHONE -->
-                            <div class="text-center py-3">
-                                <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
-                                <h5 class="fw-bold mb-2"><i class="bi bi-phone-vibrate text-primary me-1"></i> Modo Portable</h5>
-                                <p class="small text-muted mb-3">
-                                    Hay una sesión activa en la computadora principal. Se envió una notificación a su pantalla: haz clic en <strong>"Admitir"</strong> allá para continuar aquí en tu teléfono.
-                                </p>
-                                <div class="badge bg-info-subtle text-info-emphasis border px-3 py-2 mb-4" id="estadoEsperaBadge">
-                                    Esperando autorización...
-                                </div>
-                                <div class="d-grid">
-                                    <button type="button" class="btn btn-outline-danger rounded-pill btn-sm fw-bold" onclick="cancelarModoPortable()">
-                                        <i class="bi bi-x-circle me-1"></i> Cancelar solicitud
-                                    </button>
-                                </div>
-                            </div>
-                            <script>
-                                const intervaloEspera = setInterval(async () => {
-                                    try {
-                                        const res = await fetch('PHP/ajax_modo_portable.php?accion=consultar_espera');
-                                        const data = await res.json();
-                                        if (data.estado === 'aprobado') {
-                                            clearInterval(intervaloEspera);
-                                            document.getElementById('estadoEsperaBadge').className = 'badge bg-success px-3 py-2 mb-4';
-                                            document.getElementById('estadoEsperaBadge').innerText = '¡Autorizado! Entrando...';
-                                            window.location.href = 'Pages/dashboard.php';
-                                        } else if (data.estado === 'rechazado' || data.estado === 'expirado' || data.estado === 'invalido') {
-                                            clearInterval(intervaloEspera);
-                                            window.location.href = 'index.php?error=3';
-                                        }
-                                    } catch (e) {}
-                                }, 2000);
-
-                                async function cancelarModoPortable() {
-                                    clearInterval(intervaloEspera);
-                                    await fetch('PHP/ajax_modo_portable.php?accion=cancelar_espera');
-                                    window.location.href = 'index.php';
-                                }
-                            </script>
-
                         <?php else: ?>
-                            <!-- 3. FORMULARIO NORMAL DE INICIO DE SESIÓN -->
-                            <?php if (isset($_GET['portable_transferido'])): ?>
-                                <div class="alert alert-info text-center py-2 shadow-sm small fw-bold" role="alert">
-                                    <i class="bi bi-phone-fill me-1"></i> Sesión transferida al smartphone en Modo Portable.
-                                </div>
-                            <?php elseif (isset($_GET['desconectado_pc'])): ?>
-                                <div class="alert alert-warning text-center py-2 shadow-sm small fw-bold" role="alert">
-                                    <i class="bi bi-power me-1"></i> Sesión finalizada desde la computadora principal.
-                                </div>
-                            <?php elseif (isset($_GET['error'])): ?>
-                                <?php if ($_GET['error'] == 3): ?>
-                                    <div class="alert alert-warning text-center py-2 shadow-sm small fw-bold" role="alert">
-                                        <i class="bi bi-shield-exclamation me-1"></i> Solicitud de Modo Portable rechazada o tiempo expirado desde la computadora principal.
-                                    </div>
-                                <?php elseif ($_GET['error'] == 2): ?>
-                                    <div class="alert alert-warning text-center py-2 shadow-sm small fw-bold" role="alert">
-                                        <i class="bi bi-exclamation-triangle-fill me-1"></i> Esta cuenta ya está abierta en otro dispositivo.
-                                    </div>
-                                <?php else: ?>
-                                    <div class="alert alert-danger text-center py-2 shadow-sm small" role="alert">
-                                        <i class="bi bi-shield-x me-1"></i> Credenciales inválidas o cuenta bloqueada.
-                                    </div>
-                                <?php endif; ?>
-                            <?php else: ?>
-                                <div class="alert alert-info py-2 text-center small border-0 bg-info-subtle text-info-emphasis">
-                                    <i class="bi bi-shield-lock me-1"></i> Acceso Administrativo Seguro
-                                </div>
-                            <?php endif; ?>
-                                
-                            <form action="PHP/procesar_login.php" method="POST">
-                                <div class="form-floating mb-3">
-                                    <input type="text" class="form-control" id="usuario" name="usuario" placeholder="Usuario" required autofocus autocomplete="username">
-                                    <label for="usuario"><i class="bi bi-person-badge me-2 text-primary"></i>Usuario</label>
-                                </div>
-
-                                <div class="input-group mb-4">
-                                    <div class="form-floating flex-grow-1">
-                                        <input type="password" class="form-control" id="password" name="password" placeholder="Contraseña" required autocomplete="current-password">
-                                        <label for="password"><i class="bi bi-key me-2 text-primary"></i>Contraseña</label>
-                                    </div>
-                                    <button class="btn btn-icon-theme px-3" type="button" id="toggleLoginPass" aria-label="Mostrar u ocultar contraseña" title="Mostrar contraseña">
-                                        <i class="bi bi-eye"></i>
-                                    </button>
-                                </div>
-
-                                <div class="d-grid">
-                                    <button type="submit" class="btn btn-login rounded-pill">
-                                        Ingresar al Sistema <i class="bi bi-box-arrow-in-right ms-2"></i>
-                                    </button>
-                                </div>
-                            </form>
-
-                            <div class="text-center mt-3">
-                                <button type="button" class="btn btn-link btn-sm text-muted text-decoration-none" id="loginThemeToggle">
-                                    <i class="bi bi-moon-stars me-1"></i> Cambiar tema Claro / Oscuro
-                                </button>
+                            <div class="alert alert-info py-2 text-center small border-0 bg-info-subtle text-info-emphasis">
+                                <i class="bi bi-shield-lock me-1"></i> Acceso Administrativo Seguro
                             </div>
                         <?php endif; ?>
 
+                        <form action="PHP/procesar_login.php" method="POST">
+                            <div class="form-floating mb-3">
+                                <input type="text" class="form-control" id="usuario" name="usuario" placeholder="Usuario" required autofocus autocomplete="username">
+                                <label for="usuario"><i class="bi bi-person-badge me-2 text-primary"></i>Usuario</label>
+                            </div>
+
+                            <div class="input-group mb-4">
+                                <div class="form-floating flex-grow-1">
+                                    <input type="password" class="form-control" id="password" name="password" placeholder="Contraseña" required autocomplete="current-password">
+                                    <label for="password"><i class="bi bi-key me-2 text-primary"></i>Contraseña</label>
+                                </div>
+                                <button class="btn btn-icon-theme px-3" type="button" id="toggleLoginPass" aria-label="Mostrar u ocultar contraseña" title="Mostrar contraseña">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-login rounded-pill">
+                                    Ingresar al Sistema <i class="bi bi-box-arrow-in-right ms-2"></i>
+                                </button>
+                            </div>
+                        </form>
+
+                        <div class="text-center mt-3">
+                            <button type="button" class="btn btn-link btn-sm text-muted text-decoration-none" id="loginThemeToggle">
+                                <i class="bi bi-moon-stars me-1"></i> Cambiar tema Claro / Oscuro
+                            </button>
+                        </div>
                     </div>
                 </div>
 

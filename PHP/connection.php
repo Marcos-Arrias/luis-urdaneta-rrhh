@@ -28,7 +28,7 @@ try {
         'documentos', 'documentos_enlaces', 'asistencias', 'horarios_laborales',
         'cronograma_eventos', 'cronograma_participantes', 'organigrama_jerarquia',
         'usuarios_sistema', 'rebac_recursos', 'rebac_tipos_relacion',
-        'rebac_politicas_permisos', 'rebac_tuplas_grafo', 'sesiones_usuarios', 'solicitudes_modo_portable',
+        'rebac_politicas_permisos', 'rebac_tuplas_grafo', 'sesiones_usuarios',
         'historial_auditoria'
     ];
 
@@ -53,7 +53,6 @@ try {
         'organigrama_jerarquia.fecha_asignacion',
         'organigrama_jerarquia.estado_jerarquia',
         'usuarios_sistema.rol_id',
-        'sesiones_usuarios.es_pc_maestra',
         'usuarios_sistema.ultimo_login'
         
     ];
@@ -401,19 +400,6 @@ try {
             FOREIGN KEY (`usuario_id`) REFERENCES `usuarios_sistema`(`id`) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-$pdo->exec("ALTER TABLE `sesiones_usuarios` ADD COLUMN IF NOT EXISTS `es_pc_maestra` TINYINT(1) NOT NULL DEFAULT 0 AFTER `dispositivo_agente`");
-$pdo->exec("CREATE TABLE IF NOT EXISTS `solicitudes_modo_portable` (
-    `id` INT AUTO_INCREMENT PRIMARY KEY,
-    `usuario_id` INT NOT NULL,
-    `token_solicitud` VARCHAR(64) NOT NULL UNIQUE,
-    `ip_solicitante` VARCHAR(45) NULL,
-    `dispositivo_solicitante` VARCHAR(255) NULL,
-    `estado` ENUM('pendiente','aprobado','rechazado','completado') DEFAULT 'pendiente',
-    `fecha_solicitud` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    `fecha_expiracion` TIMESTAMP NULL,
-    FOREIGN KEY (`usuario_id`) REFERENCES `usuarios_sistema`(`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS `historial_auditoria` (
             `id` INT AUTO_INCREMENT PRIMARY KEY, 
@@ -655,11 +641,5 @@ function obtenerPerfilSeguridad($pdo, $usuario_id) {
     ");
     $stmt->execute([$usuario_id]);
     return $stmt->fetch(PDO::FETCH_ASSOC);
-}
-
-function esComputadoraPrincipal() {
-    $remote = $_SERVER['REMOTE_ADDR'] ?? '';
-    $server = $_SERVER['SERVER_ADDR'] ?? '';
-    return in_array($remote, ['127.0.0.1', '::1'], true) || ($remote !== '' && $remote === $server);
 }
 ?>

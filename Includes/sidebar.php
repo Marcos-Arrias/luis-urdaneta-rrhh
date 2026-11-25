@@ -121,7 +121,6 @@ $rolUserNav = $perfilNav['rol_nombre'] ?? 'SuperAdministrador';
                         </button>
                     </li>
                     <li><a class="dropdown-item py-2" href="configuracion.php"><i class="bi bi-gear me-2 text-secondary"></i>Ajustes del Sistema</a></li>
-                    <li><button type="button" class="dropdown-item py-2" data-bs-toggle="modal" data-bs-target="#modalModoPortable"><i class="bi bi-phone me-2 text-success"></i>Modo Portable (Smartphone)</button></li>
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item py-2 text-danger fw-bold" href="../PHP/logout.php"><i class="bi bi-box-arrow-right me-2"></i>Cerrar Sesión</a></li>
                 </ul>
