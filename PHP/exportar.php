@@ -11,12 +11,17 @@ $sql = "
     SELECT p.cedula, p.nombres, p.apellidos, p.fecha_ingreso, p.estado_laboral, 
            c.nombre as cargo, t.nombre as tipo,
            (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Teléfono Personal' LIMIT 1) as telefono,
-           pda.correo_electronico, pda.cargo_nominal, pda.codigo_cargo, pda.fecha_ingreso_mppe, pda.turno, pda.horas_laborales, pda.banco_nomina, pda.cuenta_bancaria
+           (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Email' LIMIT 1) as correo_electronico,
+           ccn.denominacion as cargo_nominal, ccn.codigo as codigo_cargo,
+           pda.fecha_ingreso_mppe, pda.turno, pda.horas_laborales,
+           cb.nombre as banco_nomina, pda.cuenta_bancaria
     FROM personal p 
     JOIN personal_cargos pc ON p.id = pc.personal_id AND pc.estado_cargo = 'Vigente'
     JOIN cat_cargos_areas c ON pc.cargo_area_id = c.id 
     JOIN cat_tipos_personal t ON c.tipo_personal_id = t.id 
     LEFT JOIN personal_datos_adicionales pda ON p.id = pda.personal_id
+    LEFT JOIN cat_cargos_nominales ccn ON pda.cargo_nominal_id = ccn.id
+    LEFT JOIN cat_bancos cb ON pda.banco_id = cb.id
 ";
 
 $params = [];
@@ -32,9 +37,7 @@ $personal = $stmt->fetchAll();
 
 registrarHistorial($pdo, 'Exportación', 'EXPORTAR', "Generó reporte en formato: " . strtoupper($formato));
 
-// ==========================================
-// 1. IMAGEN (JPG) CON HTML CANVAS
-// ==========================================
+// 1. IMAGEN (JPG)
 if ($formato === 'jpg') { ?>
     <!DOCTYPE html>
     <html lang="es">
@@ -55,7 +58,7 @@ if ($formato === 'jpg') { ?>
         <div id="captura">
             <div class="header-box">
                 <h2 style="margin: 0;">U.E.N LUIS URDANETA</h2>
-                <h4 style="margin: 5px 0 0; font-weight: 400;">Infografía Oficial de Personal Activo</h4>
+                <h4 style="margin: 5px 0 0; font-weight: 400;">Directorio Oficial de Personal Activo</h4>
                 <small>Fecha: <?= date('d/m/Y h:i A') ?></small>
             </div>
             <table>
@@ -63,11 +66,11 @@ if ($formato === 'jpg') { ?>
                 <tbody>
                     <?php foreach ($personal as $p): ?>
                     <tr>
-                        <td><strong>V-<?= $p['cedula'] ?></strong></td>
+                        <td><strong>V-<?= htmlspecialchars($p['cedula']) ?></strong></td>
                         <td><?= htmlspecialchars($p['apellidos'] . ', ' . $p['nombres']) ?></td>
                         <td><?= htmlspecialchars($p['cargo']) ?></td>
                         <td><?= htmlspecialchars($p['telefono'] ?? 'S/T') ?></td>
-                        <td><span style="color: green; font-weight: bold;"><?= $p['estado_laboral'] ?></span></td>
+                        <td><span style="color: green; font-weight: bold;"><?= htmlspecialchars($p['estado_laboral']) ?></span></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -88,9 +91,7 @@ if ($formato === 'jpg') { ?>
     <?php exit;
 }
 
-// ==========================================
 // 2. EXCEL (.XLS)
-// ==========================================
 elseif ($formato === 'excel') {
     header("Content-Type: application/vnd.ms-excel; charset=utf-8");
     header("Content-Disposition: attachment; filename=Nomina_Personal_" . date('Y-m-d') . ".xls");
@@ -105,25 +106,23 @@ elseif ($formato === 'excel') {
         </tr>
         <?php foreach ($personal as $p): ?>
         <tr>
-            <td><?= $p['cedula'] ?></td>
+            <td><?= htmlspecialchars($p['cedula']) ?></td>
             <td><?= htmlspecialchars($p['apellidos'] . ', ' . $p['nombres']) ?></td>
-            <td><?= $p['tipo'] ?></td>
+            <td><?= htmlspecialchars($p['tipo']) ?></td>
             <td><?= htmlspecialchars($p['cargo']) ?></td>
             <td><?= htmlspecialchars($p['cargo_nominal'] ?? '-') ?></td>
             <td><?= htmlspecialchars($p['codigo_cargo'] ?? '-') ?></td>
             <td><?= htmlspecialchars($p['telefono'] ?? 'S/T') ?></td>
-            <td><?= $p['fecha_ingreso_mppe'] ?? 'S/R' ?></td>
-            <td><?= $p['fecha_ingreso'] ?></td>
-            <td><?= $p['estado_laboral'] ?></td>
+            <td><?= htmlspecialchars($p['fecha_ingreso_mppe'] ?? 'S/R') ?></td>
+            <td><?= htmlspecialchars($p['fecha_ingreso']) ?></td>
+            <td><?= htmlspecialchars($p['estado_laboral']) ?></td>
         </tr>
         <?php endforeach; ?>
     </table>
     <?php exit;
 }
 
-// ==========================================
-// 3. CSV PLANO
-// ==========================================
+// 3. CSV
 elseif ($formato === 'csv') {
     header("Content-Type: text/csv; charset=utf-8");
     header("Content-Disposition: attachment; filename=Directorio_" . date('Y-m-d') . ".csv");
@@ -141,9 +140,7 @@ elseif ($formato === 'csv') {
     exit;
 }
 
-// ==========================================
 // 4. WORD (.DOC)
-// ==========================================
 elseif ($formato === 'word') {
     header("Content-Type: application/vnd.ms-word; charset=utf-8");
     header("Content-Disposition: attachment; filename=Ficha_Personal_" . date('Y-m-d') . ".doc");
@@ -153,18 +150,16 @@ elseif ($formato === 'word') {
         <h2 style="color:#1e3c72; text-align:center;">U.E.N LUIS URDANETA</h2>
         <h4 style="text-align:center;">Expediente General de Trabajadores</h4><hr>
         <?php foreach ($personal as $p): ?>
-            <p><strong>Cédula:</strong> V-<?= $p['cedula'] ?> | <strong>Nombre:</strong> <?= htmlspecialchars($p['apellidos'] . ' ' . $p['nombres']) ?></p>
-            <p><strong>Función:</strong> <?= $p['cargo'] ?> (<?= $p['tipo'] ?>) | <strong>Cargo Nominal:</strong> <?= $p['cargo_nominal'] ?? 'N/A' ?></p>
-            <p><strong>Teléfono:</strong> <?= $p['telefono'] ?? 'N/A' ?> | <strong>Estado:</strong> <?= $p['estado_laboral'] ?></p>
+            <p><strong>Cédula:</strong> V-<?= htmlspecialchars($p['cedula']) ?> | <strong>Nombre:</strong> <?= htmlspecialchars($p['apellidos'] . ' ' . $p['nombres']) ?></p>
+            <p><strong>Función:</strong> <?= htmlspecialchars($p['cargo']) ?> (<?= htmlspecialchars($p['tipo']) ?>) | <strong>Cargo Nominal:</strong> <?= htmlspecialchars($p['cargo_nominal'] ?? 'N/A') ?></p>
+            <p><strong>Teléfono:</strong> <?= htmlspecialchars($p['telefono'] ?? 'N/A') ?> | <strong>Estado:</strong> <?= htmlspecialchars($p['estado_laboral']) ?></p>
             <hr style="border-top:1px dashed #ccc;">
         <?php endforeach; ?>
     </body></html>
     <?php exit;
 }
 
-// ==========================================
 // 5. PDF OFICIAL
-// ==========================================
 elseif ($formato === 'pdf') { ?>
     <!DOCTYPE html>
     <html lang="es"><head><meta charset="UTF-8"><title>Directorio Oficial MPPE</title>
@@ -192,13 +187,13 @@ elseif ($formato === 'pdf') { ?>
             <tbody>
                 <?php foreach ($personal as $p): ?>
                 <tr>
-                    <td><?= $p['cedula'] ?></td>
+                    <td><?= htmlspecialchars($p['cedula']) ?></td>
                     <td><strong><?= htmlspecialchars($p['apellidos'] . ', ' . $p['nombres']) ?></strong></td>
-                    <td><?= $p['tipo'] ?></td>
+                    <td><?= htmlspecialchars($p['tipo']) ?></td>
                     <td><?= htmlspecialchars($p['cargo']) ?></td>
                     <td><?= htmlspecialchars($p['cargo_nominal'] ?? '-') ?></td>
                     <td><?= htmlspecialchars($p['telefono'] ?? '-') ?></td>
-                    <td><?= $p['estado_laboral'] ?></td>
+                    <td><?= htmlspecialchars($p['estado_laboral']) ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -207,24 +202,35 @@ elseif ($formato === 'pdf') { ?>
     <?php exit;
 }
 
-// ==========================================
-// 6. JSON ESTRUCTURADO Y COMPLETO PARA RESPALDO
-// ==========================================
+// 6. COPIA DE SEGURIDAD COMPLETA (.JSON)
 elseif ($formato === 'json') {
     header('Content-Type: application/json; charset=utf-8');
     header("Content-Disposition: attachment; filename=Respaldo_Completo_RRHH_" . date('Y-m-d') . ".json");
     
-    // Consulta profunda con todos los datos de cada trabajador
     $queryCompleta = "
         SELECT p.cedula, p.nombres, p.apellidos, p.fecha_nacimiento, p.fecha_ingreso, p.estado_laboral,
                pc.cargo_area_id, c.nombre as cargo_nombre, t.nombre as tipo_personal,
                (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Teléfono Personal' LIMIT 1) as telefono,
+               (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Email' LIMIT 1) as correo_electronico,
+               (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto IN ('Dirección Habitación','Dirección') LIMIT 1) as direccion_habitacion,
+               cb.nombre as banco_nomina, cd.nombre as dependencia, cd.codigo as codigo_dependencia,
+               ccn.denominacion as cargo_nominal, ccn.codigo as codigo_cargo,
+               cm.nombre as municipio, cp.nombre as parroquia,
+               (SELECT GROUP_CONCAT(cp_pat.nombre SEPARATOR ', ') FROM personal_salud_patologias psp JOIN cat_patologias cp_pat ON psp.patologia_id = cp_pat.id WHERE psp.personal_id = p.id AND cp_pat.tipo = 'Enfermedad Crónica') as patologias,
+               (SELECT GROUP_CONCAT(cp_ale.nombre SEPARATOR ', ') FROM personal_salud_patologias psp JOIN cat_patologias cp_ale ON psp.patologia_id = cp_ale.id WHERE psp.personal_id = p.id AND cp_ale.tipo = 'Alergia') as alergias_medicas,
+               (SELECT GROUP_CONCAT(cp_con.nombre SEPARATOR ', ') FROM personal_salud_patologias psp JOIN cat_patologias cp_con ON psp.patologia_id = cp_con.id WHERE psp.personal_id = p.id AND cp_con.tipo = 'Condición Especial') as condiciones_especiales,
+               (SELECT GROUP_CONCAT(DISTINCT NULLIF(psp.medicamento_permanente, '') SEPARATOR ', ') FROM personal_salud_patologias psp WHERE psp.personal_id = p.id) as medicamentos_permanentes,
                pda.*
         FROM personal p
         JOIN personal_cargos pc ON p.id = pc.personal_id AND pc.estado_cargo = 'Vigente'
         JOIN cat_cargos_areas c ON pc.cargo_area_id = c.id
         JOIN cat_tipos_personal t ON c.tipo_personal_id = t.id
         LEFT JOIN personal_datos_adicionales pda ON p.id = pda.personal_id
+        LEFT JOIN cat_bancos cb ON pda.banco_id = cb.id
+        LEFT JOIN cat_dependencias cd ON pda.dependencia_id = cd.id
+        LEFT JOIN cat_cargos_nominales ccn ON pda.cargo_nominal_id = ccn.id
+        LEFT JOIN cat_parroquias cp ON pda.parroquia_id = cp.id
+        LEFT JOIN cat_municipios cm ON cp.municipio_id = cm.id
     ";
     
     $params = [];
@@ -235,9 +241,7 @@ elseif ($formato === 'json') {
     
     $stmtJson = $pdo->prepare($queryCompleta);
     $stmtJson->execute($params);
-    $exportData = $stmtJson->fetchAll(PDO::FETCH_ASSOC);
-
-    echo json_encode($exportData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    echo json_encode($stmtJson->fetchAll(PDO::FETCH_ASSOC), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
 }
 ?>

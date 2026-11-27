@@ -1,15 +1,6 @@
 <?php
 require_once '../PHP/connection.php';
 
-// 1. AUTO-CREAR TABLA RELACIONAL SI NO EXISTE
-$pdo->exec("CREATE TABLE IF NOT EXISTS organigrama_jerarquia (
-    personal_id INT PRIMARY KEY,
-    jefe_id INT NULL,
-    FOREIGN KEY (personal_id) REFERENCES personal(id) ON DELETE CASCADE,
-    FOREIGN KEY (jefe_id) REFERENCES personal(id) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-
-// 2. PROCESAMIENTO AJAX DEL GUARDADO
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nodos'])) {
     ob_clean();
     header('Content-Type: application/json; charset=utf-8');
@@ -29,11 +20,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nodos'])) {
             foreach ($nodos as $n) {
                 $emp_id = intval($n['id'] ?? 0);
                 $jefe_id = (!empty($n['pid'])) ? intval($n['pid']) : null;
-                
                 if (isset($personalExistente[$emp_id])) {
                     if ($jefe_id !== null && !isset($personalExistente[$jefe_id])) $jefe_id = null;
                     if ($emp_id === $jefe_id) $jefe_id = null;
-                    
                     $stmt->execute([$emp_id, $jefe_id]);
                     $guardados++;
                 }
@@ -43,18 +32,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nodos'])) {
         registrarHistorial($pdo, 'Organigrama', 'ACTUALIZAR', "Jerarquía guardada ($guardados trabajadores).");
         echo json_encode(['success' => true, 'total' => $guardados]);
     } catch (Exception $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack();
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
     exit;
 }
 
-// 3. CARGAR ÁRBOL ACTUAL
 $queryArbol = $pdo->query("
     SELECT o.personal_id as id, o.jefe_id as pid, 
            p.cedula, p.nombres, p.apellidos, c.nombre as cargo, c.tipo_personal_id,
-           pda.turno, pda.correo_electronico, p.fecha_ingreso, p.estado_laboral,
-           pda.estado_civil, pda.nivel_academico, pda.tipo_sangre, pda.banco_nomina, pda.direccion_habitacion,
+           pda.turno, p.fecha_ingreso, p.estado_laboral,
+           pda.estado_civil, pda.nivel_academico, pda.tipo_sangre, cb.nombre as banco_nomina,
+           (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Email' LIMIT 1) as correo_electronico,
+           (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto IN ('Dirección Habitación','Dirección') LIMIT 1) as direccion_habitacion,
            (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Teléfono Personal' LIMIT 1) as telefono,
            (SELECT d.ruta_archivo FROM documentos d JOIN documentos_enlaces de ON d.id = de.documento_id JOIN cat_tipos_documentos td ON d.tipo_documento_id = td.id WHERE de.tabla_destino = 'personal' AND de.registro_id = p.id AND td.clave = 'FOT' ORDER BY d.id DESC LIMIT 1) as foto
     FROM organigrama_jerarquia o
@@ -62,6 +52,7 @@ $queryArbol = $pdo->query("
     LEFT JOIN personal_cargos pc ON p.id = pc.personal_id AND pc.estado_cargo = 'Vigente'
     LEFT JOIN cat_cargos_areas c ON pc.cargo_area_id = c.id
     LEFT JOIN personal_datos_adicionales pda ON p.id = pda.personal_id
+    LEFT JOIN cat_bancos cb ON pda.banco_id = cb.id
 ")->fetchAll(PDO::FETCH_ASSOC);
 
 $data_tree = [];
@@ -72,7 +63,7 @@ foreach ($queryArbol as $row) {
     if ($row['tipo_personal_id'] == 3) { $color = 'ffc107'; $textoColor = '000000'; }
     
     $svgAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23$color'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%23$textoColor' font-size='40' font-family='Arial' font-weight='bold'>$iniciales</text></svg>";
-    $img = !empty($row['foto']) ? $row['foto'] : $svgAvatar;
+    $img = !empty($row['foto']) ? obtenerRutaMiniatura($row['foto']) : $svgAvatar;
     
     $data_tree[] = [
         'id' => (int)$row['id'],
@@ -95,11 +86,11 @@ foreach ($queryArbol as $row) {
 }
 $jerarquia_actual = json_encode($data_tree, JSON_UNESCAPED_UNICODE);
 
-// 4. CARGAR PERSONAL PARA AÑADIR
 $empleados = $pdo->query("
     SELECT p.id, p.nombres, p.apellidos, c.nombre as cargo, c.tipo_personal_id,
            p.cedula, p.fecha_ingreso, p.estado_laboral,
            (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Teléfono Personal' LIMIT 1) as telefono,
+           (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Email' LIMIT 1) as correo_electronico,
            (SELECT d.ruta_archivo FROM documentos d JOIN documentos_enlaces de ON d.id = de.documento_id JOIN cat_tipos_documentos td ON d.tipo_documento_id = td.id WHERE de.tabla_destino = 'personal' AND de.registro_id = p.id AND td.clave = 'FOT' ORDER BY d.id DESC LIMIT 1) as foto
     FROM personal p 
     JOIN personal_cargos pc ON p.id = pc.personal_id AND pc.estado_cargo = 'Vigente'
@@ -113,14 +104,12 @@ include '../Includes/header.php';
 include '../Includes/sidebar.php';
 ?>
 
-<!-- Librería Oficial OrgChart.js Local -->
 <script src="../JS/OrgChart.js"></script>
 
 <style>
     #tree-container { width: 100%; height: 750px; background-color: var(--bs-body-tertiary); border-radius: 1rem; border: 1px solid var(--bs-border-color); position: relative; overflow: hidden;}
     #tree { width: 100%; height: 100%; }
     
-    /* Adaptación al modo oscuro */
     [data-bs-theme="dark"] .boc-light rect { fill: #212529 !important; stroke: #495057 !important; }
     [data-bs-theme="dark"] .boc-light text { fill: #ffffff !important; }
     [data-bs-theme="dark"] .node rect { fill: #212529 !important; }
@@ -128,43 +117,27 @@ include '../Includes/sidebar.php';
     [data-bs-theme="dark"] .boc-search { background-color: #212529 !important; border-color: #495057 !important; color: white !important; }
     [data-bs-theme="dark"] .boc-search input { color: white !important; }
     
-    /* MODOS PERSONALIZADOS EN PANTALLA */
     #tree.hide-avatars image { display: none !important; }
     #tree.mono-mode .node rect { fill: #ffffff !important; stroke: #000000 !important; stroke-width: 2px !important; }
     #tree.mono-mode .node text { fill: #000000 !important; }
     #tree.mono-mode .link { stroke: #000000 !important; stroke-width: 2px !important; }
 
-    /* CONTENEDOR EXCLUSIVO PARA IMPRESIÓN / PDF (BLINDADO) */
+    [data-ctrl-ec-id] { opacity: 0 !important; transition: opacity 0.2s ease-in-out; }
+    [data-n-id]:hover ~ [data-ctrl-ec-id], [data-ctrl-ec-id]:hover, #tree.mostrar-nexos [data-ctrl-ec-id] {
+        opacity: 1 !important; display: block !important; visibility: visible !important;
+    }
+
     #print-container { display: none; }
     @media print {
         #wrapper, .modal, .modal-backdrop, #bulk-toolbar { display: none !important; }
-        #print-container {
-            display: flex !important;
-            justify-content: center;
-            align-items: center;
-            width: 100vw;
-            height: 100vh;
-            position: fixed;
-            top: 0;
-            left: 0;
-            background: white !important;
-            z-index: 999999;
-        }
+        #print-container { display: flex !important; justify-content: center; align-items: center; width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; background: white !important; z-index: 999999; }
         @page { size: landscape; margin: 5mm; }
     }
 
     .boc-edit-form, .edit-form, div[data-balkan-orgchart-edit-form], .boc-edit-button, .boc-add-button, .node-menu { display: none !important; }
     .modal-header { cursor: move; }
-
-    /* ANIMACIÓN DEL BOTÓN DE GUARDAR */
-    @keyframes pulse-red {
-        0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
-        70% { box-shadow: 0 0 0 12px rgba(220, 53, 69, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
-    }
-    .pulse-warning { animation: pulse-red 1.5s infinite; }´
-
-    #tree-container.esta-vacio #tree svg { opacity: 0 !important; }
+    @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); } 70% { box-shadow: 0 0 0 12px rgba(220, 53, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); } }
+    .pulse-warning { animation: pulse-red 1.5s infinite; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -182,20 +155,11 @@ include '../Includes/sidebar.php';
 
 <div class="card shadow-sm border-0 rounded-4 mb-4">
     <div class="card-body p-0">
-        <div id="tree-container">
-    <div id="organigramaVacioEstado" class="position-absolute top-50 start-50 translate-middle text-center p-4 d-none" style="z-index: 5; pointer-events: none;">
-        <div class="icon-circle bg-primary-subtle text-primary mx-auto mb-3" style="width: 72px; height: 72px;">
-            <i class="bi bi-diagram-3 fs-1"></i>
-        </div>
-        <h5 class="fw-bold mb-1">El organigrama está vacío</h5>
-        <p class="small text-muted mb-0">Haz clic en <strong>"Añadir Personal"</strong> arriba a la derecha para comenzar.</p>
-    </div>
-    <div id="tree"></div>
-</div>
+        <div id="tree-container"><div id="tree"></div></div>
     </div>
 </div>
 
-<!-- MODAL: CONFIGURACIÓN VISUAL Y EXPORTACIÓN -->
+<!-- MODAL: VISTA Y EXPORTACIÓN -->
 <div class="modal fade" id="modalExportacion" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
@@ -204,39 +168,35 @@ include '../Includes/sidebar.php';
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body bg-body-tertiary p-4">
-                
                 <h6 class="fw-bold text-primary mb-3"><i class="bi bi-palette-fill me-2"></i>1. Opciones Visuales</h6>
                 <div class="card border-0 shadow-sm mb-4">
                     <div class="card-body">
                         <div class="form-check form-switch mb-3 fs-6">
                             <input class="form-check-input" type="checkbox" id="chkMonoMode" onchange="aplicarFiltrosVisuales()">
-                            <label class="form-check-label fw-medium" for="chkMonoMode">Modo Monocromático (B/N)</label>
+                            <label class="form-check-label fw-medium" for="chkMonoMode">Modo Blanco y Negro</label>
                         </div>
                         <div class="form-check form-switch fs-6">
                             <input class="form-check-input" type="checkbox" id="chkHideIcons" onchange="aplicarFiltrosVisuales()">
-                            <label class="form-check-label fw-medium" for="chkHideIcons">Ocultar Fotos e Íconos</label>
+                            <label class="form-check-label fw-medium" for="chkHideIcons">Ocultar Fotos</label>
                         </div>
                     </div>
                 </div>
-
                 <h6 class="fw-bold text-success mb-3"><i class="bi bi-distribute-vertical me-2"></i>2. Distribución</h6>
                 <div class="card border-0 shadow-sm mb-4">
                     <div class="card-body">
                         <select id="selectEstructura" class="form-select shadow-sm" onchange="cambiarEstructuraArbol()">
-                            <option value="mixed">Mixto (Optimizado para ahorrar espacio)</option>
-                            <option value="vertical">Vertical (Clásico, de arriba a abajo)</option>
+                            <option value="mixed">Mixto (Automático)</option>
+                            <option value="vertical">Vertical (De arriba hacia abajo)</option>
                             <option value="horizontal">Horizontal (De izquierda a derecha)</option>
                         </select>
                     </div>
                 </div>
-
                 <h6 class="fw-bold text-danger mb-3"><i class="bi bi-download me-2"></i>3. Guardar Documento</h6>
                 <div class="d-flex gap-2">
                     <button class="btn btn-outline-primary flex-fill fw-bold py-2" onclick="exportarPNG()"><i class="bi bi-filetype-png d-block fs-3 mb-1"></i> Imagen PNG</button>
                     <button class="btn btn-outline-danger flex-fill fw-bold py-2" onclick="exportarPDF()"><i class="bi bi-printer d-block fs-3 mb-1"></i> Imprimir / PDF</button>
                     <button class="btn btn-outline-warning text-dark flex-fill fw-bold py-2" onclick="exportarSVG()"><i class="bi bi-filetype-svg d-block fs-3 mb-1"></i> Vector SVG</button>
                 </div>
-
             </div>
         </div>
     </div>
@@ -254,7 +214,7 @@ include '../Includes/sidebar.php';
                 <input type="hidden" id="opcionesNodeId">
                 <p class="text-center fw-bold mb-3" id="opcionesNodeName"></p>
                 <div class="d-grid gap-2">
-                    <button class="btn btn-info text-white fw-bold text-start" onclick="abrirDesdeMenu('detalles')"><i class="bi bi-eye-fill me-2"></i> Ver Detalles Completos</button>
+                    <button class="btn btn-info text-white fw-bold text-start" onclick="abrirDesdeMenu('detalles')"><i class="bi bi-eye-fill me-2"></i> Ver Detalles</button>
                     <button class="btn btn-warning text-dark fw-bold text-start" onclick="abrirDesdeMenu('editar')"><i class="bi bi-diagram-2-fill me-2"></i> Cambiar de Jefe</button>
                     <button class="btn btn-success fw-bold text-start" onclick="abrirDesdeMenu('redirigir_crud')"><i class="bi bi-pencil-square me-2"></i> Editar en Personal</button>
                     <button class="btn btn-danger fw-bold text-start mt-2" onclick="abrirDesdeMenu('eliminar')"><i class="bi bi-trash-fill me-2"></i> Quitar del Organigrama</button>
@@ -320,7 +280,7 @@ include '../Includes/sidebar.php';
         <div class="modal-content border border-warning shadow-lg">
             <div class="modal-header bg-warning text-dark py-2">
                 <h6 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2"></i>Cambiar Jefe</h6>
-                <button type="button" class="btn-close btn-close-modal" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body bg-body-tertiary">
                 <input type="hidden" id="editNodeId">
@@ -384,13 +344,13 @@ include '../Includes/sidebar.php';
         nodes: dataTree
     });
 
-    
+    document.addEventListener('pointerdown', function(e) {
+        if (e.target.closest('#tree')) {
+            document.getElementById('tree').classList.toggle('mostrar-nexos');
+        }
+    });
 
-    // ==========================================
-    // SISTEMA DE DETECCIÓN DE CAMBIOS
-    // ==========================================
     let tieneCambiosSinGuardar = false;
-
     function marcarComoModificado() {
         tieneCambiosSinGuardar = true;
         let btn = document.getElementById('btnGuardar');
@@ -398,7 +358,6 @@ include '../Includes/sidebar.php';
         btn.classList.add('btn-danger', 'pulse-warning');
         btn.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i> ¡Guardar Cambios!';
     }
-
     function marcarComoGuardado() {
         tieneCambiosSinGuardar = false;
         let btn = document.getElementById('btnGuardar');
@@ -406,7 +365,6 @@ include '../Includes/sidebar.php';
         btn.classList.add('btn-primary');
         btn.innerHTML = '<i class="bi bi-save me-1"></i> Guardar Cambios';
     }
-
     chart.onDrop(function () { marcarComoModificado(); });
 
     window.addEventListener('beforeunload', function (e) {
@@ -416,113 +374,66 @@ include '../Includes/sidebar.php';
         }
     });
 
-    // ==========================================
-    // EXPORTACIÓN 100% NATIVA Y OFFLINE (REPARADA)
-    // ==========================================
-    function abrirModalExportacion() {
-        new bootstrap.Modal(document.getElementById('modalExportacion')).show();
-    }
-
+    function abrirModalExportacion() { new bootstrap.Modal(document.getElementById('modalExportacion')).show(); }
     function aplicarFiltrosVisuales() {
         let treeEl = document.getElementById('tree');
         treeEl.classList.toggle('mono-mode', document.getElementById('chkMonoMode').checked);
         treeEl.classList.toggle('hide-avatars', document.getElementById('chkHideIcons').checked);
     }
-
     function cambiarEstructuraArbol() {
         let formato = document.getElementById('selectEstructura').value;
-        if (formato === 'vertical') {
-            chart.config.layout = OrgChart.normal;
-            chart.config.orientation = OrgChart.orientation.top;
-        } else if (formato === 'horizontal') {
-            chart.config.layout = OrgChart.normal;
-            chart.config.orientation = OrgChart.orientation.left;
-        } else {
-            chart.config.layout = OrgChart.mixed;
-            chart.config.orientation = OrgChart.orientation.top;
-        }
+        if (formato === 'vertical') { chart.config.layout = OrgChart.normal; chart.config.orientation = OrgChart.orientation.top; }
+        else if (formato === 'horizontal') { chart.config.layout = OrgChart.normal; chart.config.orientation = OrgChart.orientation.left; }
+        else { chart.config.layout = OrgChart.mixed; chart.config.orientation = OrgChart.orientation.top; }
         chart.draw();
     }
 
-    // CLONA EL SVG E INYECTA LOS FILTROS EN SUS ATRIBUTOS REALES
     function obtenerSvgConFiltros() {
         let svgOriginal = document.querySelector("#tree svg");
         if (!svgOriginal) return null;
         let svgClone = svgOriginal.cloneNode(true);
-
         let isMono = document.getElementById('chkMonoMode').checked;
         let isHideIcons = document.getElementById('chkHideIcons').checked;
 
-        // 1. Ocultar avatares
+        svgClone.querySelectorAll('[data-ctrl-ec-id], .boc-expcoll, .expcoll').forEach(el => el.remove());
         if (isHideIcons) {
-            svgClone.querySelectorAll('image').forEach(img => {
-                img.setAttribute('display', 'none');
-                img.style.display = 'none';
-            });
+            svgClone.querySelectorAll('image').forEach(img => { img.setAttribute('display', 'none'); img.style.display = 'none'; });
         }
-
-        // 2. Aplicar blanco y negro en atributos reales
         if (isMono) {
-            svgClone.querySelectorAll('[data-n-id] rect, .node rect, rect').forEach(rect => {
-                rect.setAttribute('fill', '#ffffff');
-                rect.setAttribute('stroke', '#000000');
-                rect.setAttribute('stroke-width', '2');
-            });
-            svgClone.querySelectorAll('[data-n-id] text, .node text, text').forEach(text => {
-                text.setAttribute('fill', '#000000');
-            });
-            svgClone.querySelectorAll('path.link, path').forEach(path => {
-                path.setAttribute('stroke', '#000000');
-                path.setAttribute('stroke-width', '2');
-            });
+            svgClone.querySelectorAll('[data-n-id] rect, .node rect, rect').forEach(rect => { rect.setAttribute('fill', '#ffffff'); rect.setAttribute('stroke', '#000000'); rect.setAttribute('stroke-width', '2'); });
+            svgClone.querySelectorAll('[data-n-id] text, .node text, text').forEach(text => { text.setAttribute('fill', '#000000'); });
+            svgClone.querySelectorAll('path.link, path').forEach(path => { path.setAttribute('stroke', '#000000'); path.setAttribute('stroke-width', '2'); });
         }
-
         return svgClone;
     }
 
-    // PROCESADOR A CANVAS
     function generarCanvasOrganigrama(callback) {
         chart.fit();
         setTimeout(() => {
             let svgClone = obtenerSvgConFiltros();
             if (!svgClone) return alert("Error al procesar el organigrama.");
-
             let svgData = new XMLSerializer().serializeToString(svgClone);
             if (!svgData.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
                 svgData = svgData.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
             }
-
             let canvas = document.createElement("canvas");
             let ctx = canvas.getContext("2d");
             let img = new Image();
-
             let svgOrig = document.querySelector("#tree svg");
             let width = svgOrig.clientWidth || 1600;
             let height = svgOrig.clientHeight || 1000;
-
-            canvas.width = width * 2;
-            canvas.height = height * 2;
-            ctx.scale(2, 2);
-
+            canvas.width = width * 2; canvas.height = height * 2; ctx.scale(2, 2);
             let blob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
             let url = URL.createObjectURL(blob);
-
             img.onload = function () {
-                ctx.fillStyle = "#ffffff";
-                ctx.fillRect(0, 0, width, height);
-                ctx.drawImage(img, 0, 0, width, height);
-                URL.revokeObjectURL(url);
-                callback(canvas);
+                ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, width, height);
+                ctx.drawImage(img, 0, 0, width, height); URL.revokeObjectURL(url); callback(canvas);
             };
-            img.onerror = function() {
-                URL.revokeObjectURL(url);
-                alert("Error al convertir el organigrama en imagen.");
-            };
+            img.onerror = function() { URL.revokeObjectURL(url); alert("Error al convertir el organigrama en imagen."); };
             img.src = url;
         }, 300);
     }
 
-    // 1. Exportar SVG con filtros aplicados
     function exportarSVG() {
         bootstrap.Modal.getInstance(document.getElementById('modalExportacion'))?.hide();
         chart.fit();
@@ -530,52 +441,32 @@ include '../Includes/sidebar.php';
             let svgClone = obtenerSvgConFiltros();
             if (!svgClone) return alert("Error capturando el vector.");
             let source = new XMLSerializer().serializeToString(svgClone);
-            if (!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
-                source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
-            }
+            if (!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
             let blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
             let url = URL.createObjectURL(blob);
-            let a = document.createElement("a");
-            a.href = url;
-            a.download = "Organigrama_Luis_Urdaneta.svg";
-            a.click();
+            let a = document.createElement("a"); a.href = url; a.download = "Organigrama_Luis_Urdaneta.svg"; a.click();
             URL.revokeObjectURL(url);
         }, 300);
     }
 
-    // 2. Exportar PNG directo (con Monocromo y Sin Iconos)
     function exportarPNG() {
         bootstrap.Modal.getInstance(document.getElementById('modalExportacion'))?.hide();
         generarCanvasOrganigrama(function (canvas) {
-            let a = document.createElement("a");
-            a.download = "Organigrama_Luis_Urdaneta.png";
-            a.href = canvas.toDataURL("image/png");
-            a.click();
+            let a = document.createElement("a"); a.download = "Organigrama_Luis_Urdaneta.png"; a.href = canvas.toDataURL("image/png"); a.click();
         });
     }
 
-    // 3. Imprimir / Guardar como PDF oficial (Sin abrir pestañas raras)
     function exportarPDF() {
         bootstrap.Modal.getInstance(document.getElementById('modalExportacion'))?.hide();
         generarCanvasOrganigrama(function (canvas) {
             let imgData = canvas.toDataURL("image/png");
             let printContainer = document.getElementById('print-container');
-            if (!printContainer) {
-                printContainer = document.createElement('div');
-                printContainer.id = 'print-container';
-                document.body.appendChild(printContainer);
-            }
+            if (!printContainer) { printContainer = document.createElement('div'); printContainer.id = 'print-container'; document.body.appendChild(printContainer); }
             printContainer.innerHTML = `<img src="${imgData}" style="max-width: 100%; max-height: 95vh; object-fit: contain;">`;
-            
-            setTimeout(() => {
-                window.print();
-            }, 300);
+            setTimeout(() => { window.print(); }, 300);
         });
     }
 
-    // ==========================================
-    // RESTO DE FUNCIONES DEL CRUD
-    // ==========================================
     chart.editUI.on('show', function (sender, nodeId) {
         let nodeData = chart.get(nodeId);
         document.getElementById('opcionesNodeId').value = nodeId;
@@ -605,14 +496,11 @@ include '../Includes/sidebar.php';
                 document.getElementById('detSangre').innerText = node.tipo_sangre || 'S/R';
                 document.getElementById('detBanco').innerText = node.banco || 'S/R';
                 new bootstrap.Modal(document.getElementById('modalVerDetalles')).show();
-            } 
-            else if (accion === 'editar') {
+            } else if (accion === 'editar') {
                 document.getElementById('editNodeId').value = node.id;
                 document.getElementById('editNodeName').innerText = node.name;
-
                 let selectJefe = document.getElementById('selectNuevoJefe');
                 selectJefe.innerHTML = '<option value="">Ninguno (Máxima Autoridad)</option>';
-                
                 for (let j_id in chart.nodes) {
                     let n = chart.nodes[j_id];
                     if (n && n.id && n.id != id) {
@@ -625,12 +513,10 @@ include '../Includes/sidebar.php';
                     }
                 }
                 new bootstrap.Modal(document.getElementById('modalEditPosition')).show();
-            } 
-            else if (accion === 'redirigir_crud') {
+            } else if (accion === 'redirigir_crud') {
                 window.location.href = `personal.php?tipo=${node.tipo_personal}&auto_edit=${node.id}`;
-            }
-            else if (accion === 'eliminar') {
-                if(confirm("¿Seguro que desea quitar a " + node.name + " del esquema gráfico?")) {
+            } else if (accion === 'eliminar') {
+                if (confirm("¿Seguro que desea quitar a " + node.name + " del esquema gráfico?")) {
                     chart.removeNode(id);
                     marcarComoModificado();
                 }
@@ -655,13 +541,12 @@ include '../Includes/sidebar.php';
     function confirmarAgregar() {
         let empId = document.getElementById('selectEmpleado').value;
         let pid = document.getElementById('selectJefeAgregar').value;
-        if(pid === "") pid = null;
-
-        if(!empId) { alert('Seleccione un empleado.'); return; }
-        if(chart.nodes[empId]) { alert('¡Esta persona ya está en el organigrama!'); return; }
+        if (pid === "") pid = null;
+        if (!empId) { alert('Seleccione un empleado.'); return; }
+        if (chart.nodes[empId]) { alert('¡Esta persona ya está en el organigrama!'); return; }
 
         let empData = todosEmpleados.find(e => e.id == empId);
-        if(empData) {
+        if (empData) {
             let iniciales = (empData.nombres.charAt(0) + empData.apellidos.charAt(0)).toUpperCase();
             let color = '0d6efd'; let textoColor = 'ffffff';
             if (empData.tipo_personal_id == 2) color = '198754';
@@ -684,33 +569,21 @@ include '../Includes/sidebar.php';
             marcarComoModificado();
             bootstrap.Modal.getInstance(document.getElementById('modalAddNode')).hide();
         }
-        
-        function verificarOrganigramaVacio() {
-    let total = 0;
-    for (let k in chart.nodes) {
-        if (chart.nodes[k] && chart.nodes[k].id !== undefined) total++;
-    }
-    document.getElementById('tree-container').classList.toggle('esta-vacio', total === 0);
-    document.getElementById('organigramaVacioEstado').classList.toggle('d-none', total > 0);
-}
-verificarOrganigramaVacio();
     }
 
     function confirmarEdicionPosicion() {
         let id = document.getElementById('editNodeId').value;
         let pid = document.getElementById('selectNuevoJefe').value;
         if (pid === "") pid = null;
-        
         let nodeData = chart.get(id);
         nodeData.pid = pid ? parseInt(pid) : null;
         chart.updateNode(nodeData);
-        
         marcarComoModificado();
         bootstrap.Modal.getInstance(document.getElementById('modalEditPosition')).hide();
     }
 
     function vaciarArbol() {
-        if(confirm('¿Seguro que desea limpiar todo el esquema visual? (Recuerde guardar para sincronizar).')) {
+        if (confirm('¿Seguro que desea limpiar todo el esquema visual? (Recuerde guardar para sincronizar).')) {
             chart.load([]); 
             marcarComoModificado();
         }
@@ -731,19 +604,12 @@ verificarOrganigramaVacio();
                     if (!isNaN(empId)) nodosExtraidos.push({ id: empId, pid: (!isNaN(jefeId) && jefeId !== empId) ? jefeId : null });
                 }
             }
-
             let formData = new FormData();
             formData.append('nodos', JSON.stringify(nodosExtraidos));
-
             let response = await fetch('organigrama.php', { method: 'POST', body: formData });
             let result = await response.json();
-
-            if (result.success) {
-                marcarComoGuardado();
-            } else {
-                alert("Error al guardar: " + result.error);
-                btn.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i> ¡Guardar Cambios!';
-            }
+            if (result.success) marcarComoGuardado();
+            else { alert("Error al guardar: " + result.error); btn.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i> ¡Guardar Cambios!'; }
         } catch (error) {
             alert("Error de conexión al guardar los datos.");
             btn.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i> ¡Guardar Cambios!';

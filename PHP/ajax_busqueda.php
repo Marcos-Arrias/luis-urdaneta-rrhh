@@ -9,18 +9,15 @@ if (!isset($_SESSION['admin_id'])) {
 }
 
 $uid = $_SESSION['admin_id'];
-$modo = $_GET['modo'] ?? 'global'; // 'global' o 'selector_personal'
+$modo = $_GET['modo'] ?? 'global';
 $q = trim($_GET['q'] ?? '');
 $tabla = $_GET['tabla'] ?? 'todos';
 
-// Normalizar texto por si buscan cédula con puntos o "V-"
 $qSoloNumeros = preg_replace('/[^0-9]/', '', $q);
 $like = '%' . $q . '%';
 $likeNum = !empty($qSoloNumeros) ? '%' . $qSoloNumeros . '%' : $like;
 
-// =========================================================================
-// MODO 1: SELECTOR IMPORTABLE DE TRABAJADORES (Para modales y formularios)
-// =========================================================================
+// MODO 1: SELECTOR IMPORTABLE DE TRABAJADORES
 if ($modo === 'selector_personal') {
     if (!tienePermisoReBAC($pdo, $uid, 'expediente_personal', 'leer')) {
         echo json_encode(['success' => true, 'resultados' => []]);
@@ -38,6 +35,7 @@ if ($modo === 'selector_personal') {
         LEFT JOIN cat_cargos_areas c ON pc.cargo_area_id = c.id
         LEFT JOIN cat_tipos_personal t ON c.tipo_personal_id = t.id
         LEFT JOIN personal_datos_adicionales pda ON p.id = pda.personal_id
+        LEFT JOIN cat_cargos_nominales ccn ON pda.cargo_nominal_id = ccn.id
         WHERE 1=1
     ";
     $params = [];
@@ -51,30 +49,22 @@ if ($modo === 'selector_personal') {
             CONCAT(p.nombres, ' ', p.apellidos) LIKE ? OR
             CONCAT(p.apellidos, ' ', p.nombres) LIKE ? OR
             c.nombre LIKE ? OR
-            pda.cargo_nominal LIKE ?
+            ccn.denominacion LIKE ?
         )";
         array_push($params, $like, $likeNum, $like, $like, $like, $like, $like, $like);
     }
 
-    if ($tipo_filtro > 0) {
-        $sql .= " AND t.id = ?";
-        $params[] = $tipo_filtro;
-    }
-    if ($solo_activos) {
-        $sql .= " AND p.estado_laboral = 'Activo'";
-    }
+    if ($tipo_filtro > 0) { $sql .= " AND t.id = ?"; $params[] = $tipo_filtro; }
+    if ($solo_activos) { $sql .= " AND p.estado_laboral = 'Activo'"; }
 
     $sql .= " GROUP BY p.id ORDER BY p.apellidos ASC LIMIT 25";
-
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     echo json_encode(['success' => true, 'resultados' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
     exit;
 }
 
-// =========================================================================
-// MODO 2: BÚSQUEDA GLOBAL AVANZADA (NAVBAR Y MODAL CON FILTROS POR TABLA)
-// =========================================================================
+// MODO 2: BÚSQUEDA GLOBAL AVANZADA (3FN)
 $resultados = [
     'personal' => [],
     'documentos' => [],
@@ -85,7 +75,7 @@ $resultados = [
 
 $limit = ($tabla === 'todos') ? 6 : 25;
 
-// 1. BUSCAR EN PERSONAL Y METADATOS
+// 1. PERSONAL
 if (($tabla === 'todos' || $tabla === 'personal') && tienePermisoReBAC($pdo, $uid, 'expediente_personal', 'leer')) {
     $f_tipo = intval($_GET['p_tipo'] ?? 0);
     $f_estado = trim($_GET['p_estado'] ?? '');
@@ -93,14 +83,20 @@ if (($tabla === 'todos' || $tabla === 'personal') && tienePermisoReBAC($pdo, $ui
     $sql = "
         SELECT p.id, p.cedula, p.nombres, p.apellidos, p.estado_laboral, p.fecha_ingreso,
                c.nombre as cargo, t.id as tipo_id, t.nombre as tipo_nombre,
-               pda.cargo_nominal, pda.correo_electronico, pda.municipio, pda.parroquia,
+               ccn.denominacion as cargo_nominal, cm.nombre as municipio, cp.nombre as parroquia,
+               (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Email' LIMIT 1) as correo_electronico,
                (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Teléfono Personal' LIMIT 1) as telefono
         FROM personal p
         LEFT JOIN personal_cargos pc ON p.id = pc.personal_id AND pc.estado_cargo = 'Vigente'
         LEFT JOIN cat_cargos_areas c ON pc.cargo_area_id = c.id
         LEFT JOIN cat_tipos_personal t ON c.tipo_personal_id = t.id
         LEFT JOIN personal_datos_adicionales pda ON p.id = pda.personal_id
+        LEFT JOIN cat_cargos_nominales ccn ON pda.cargo_nominal_id = ccn.id
+        LEFT JOIN cat_parroquias cp ON pda.parroquia_id = cp.id
+        LEFT JOIN cat_municipios cm ON cp.municipio_id = cm.id
         LEFT JOIN personal_contactos pcon ON p.id = pcon.personal_id
+        LEFT JOIN personal_salud_patologias psp ON p.id = psp.personal_id
+        LEFT JOIN cat_patologias cpat ON psp.patologia_id = cpat.id
         WHERE 1=1
     ";
     $params = [];
@@ -114,17 +110,15 @@ if (($tabla === 'todos' || $tabla === 'personal') && tienePermisoReBAC($pdo, $ui
             CONCAT(p.nombres, ' ', p.apellidos) LIKE ? OR
             CONCAT(p.apellidos, ' ', p.nombres) LIKE ? OR
             c.nombre LIKE ? OR
-            pda.cargo_nominal LIKE ? OR
-            pda.codigo_cargo LIKE ? OR
-            pda.correo_electronico LIKE ? OR
-            pda.direccion_habitacion LIKE ? OR
-            pda.municipio LIKE ? OR
-            pda.parroquia LIKE ? OR
+            ccn.denominacion LIKE ? OR
+            ccn.codigo LIKE ? OR
+            pcon.valor LIKE ? OR
+            cm.nombre LIKE ? OR
+            cp.nombre LIKE ? OR
             pda.nivel_academico LIKE ? OR
-            pda.patologias LIKE ? OR
-            pcon.valor LIKE ?
+            cpat.nombre LIKE ?
         )";
-        array_push($params, $like, $likeNum, $like, $like, $like, $like, $like, $like, $like, $like, $like, $like, $like, $like, $like, $like);
+        array_push($params, $like, $likeNum, $like, $like, $like, $like, $like, $like, $like, $like, $like, $like, $like, $like);
     }
 
     if ($f_tipo > 0) { $sql .= " AND t.id = ?"; $params[] = $f_tipo; }
@@ -136,7 +130,7 @@ if (($tabla === 'todos' || $tabla === 'personal') && tienePermisoReBAC($pdo, $ui
     $resultados['personal'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-// 2. BUSCAR EN DOCUMENTOS / ARCHIVOS
+// 2. DOCUMENTOS
 if (($tabla === 'todos' || $tabla === 'documentos') && tienePermisoReBAC($pdo, $uid, 'documentos', 'leer')) {
     $f_doc_tipo = intval($_GET['d_tipo'] ?? 0);
     $f_doc_ent = trim($_GET['d_entidad'] ?? '');
@@ -148,7 +142,7 @@ if (($tabla === 'todos' || $tabla === 'documentos') && tienePermisoReBAC($pdo, $
                    CASE 
                        WHEN de.tabla_destino = 'personal' THEN CONCAT('👤 ', p.apellidos, ', ', p.nombres)
                        WHEN de.tabla_destino = 'cronograma_eventos' THEN CONCAT('📅 ', ce.titulo)
-                       WHEN de.tabla_destino = 'institucional' THEN '🏛️ Institucional'
+                       WHEN de.tabla_destino = 'institucional' THEN '🏛️ Documento General'
                        ELSE de.tabla_destino
                    END SEPARATOR ' | '
                ) as vinculos_txt
@@ -163,15 +157,9 @@ if (($tabla === 'todos' || $tabla === 'documentos') && tienePermisoReBAC($pdo, $
 
     if ($q !== '') {
         $sql .= " AND (
-            d.codigo_archivo LIKE ? OR
-            d.nombre_original LIKE ? OR
-            td.clave LIKE ? OR
-            td.nombre LIKE ? OR
-            de.notas LIKE ? OR
-            p.cedula LIKE ? OR
-            p.nombres LIKE ? OR
-            p.apellidos LIKE ? OR
-            ce.titulo LIKE ?
+            d.codigo_archivo LIKE ? OR d.nombre_original LIKE ? OR td.clave LIKE ? OR
+            td.nombre LIKE ? OR de.notas LIKE ? OR p.cedula LIKE ? OR
+            p.nombres LIKE ? OR p.apellidos LIKE ? OR ce.titulo LIKE ?
         )";
         array_push($params, $like, $like, $like, $like, $like, $like, $like, $like, $like);
     }
@@ -185,7 +173,7 @@ if (($tabla === 'todos' || $tabla === 'documentos') && tienePermisoReBAC($pdo, $
     $resultados['documentos'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-// 3. BUSCAR EN ASISTENCIAS
+// 3. ASISTENCIAS
 if (($tabla === 'todos' || $tabla === 'asistencias') && tienePermisoReBAC($pdo, $uid, 'asistencias', 'leer')) {
     $f_as_estado = trim($_GET['a_estado'] ?? '');
     $f_desde = trim($_GET['a_desde'] ?? '');
@@ -219,7 +207,7 @@ if (($tabla === 'todos' || $tabla === 'asistencias') && tienePermisoReBAC($pdo, 
     $resultados['asistencias'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-// 4. BUSCAR EN CALENDARIO LABORAL (HORARIOS)
+// 4. HORARIOS
 if (($tabla === 'todos' || $tabla === 'horarios') && tienePermisoReBAC($pdo, $uid, 'horarios', 'leer')) {
     $f_dia = trim($_GET['h_dia'] ?? '');
 
@@ -250,7 +238,7 @@ if (($tabla === 'todos' || $tabla === 'horarios') && tienePermisoReBAC($pdo, $ui
     $resultados['horarios'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-// 5. BUSCAR EN CRONOGRAMA DE EVENTOS
+// 5. CRONOGRAMA
 if (($tabla === 'todos' || $tabla === 'cronograma') && tienePermisoReBAC($pdo, $uid, 'cronograma', 'leer')) {
     $f_desde = trim($_GET['c_desde'] ?? '');
     $f_hasta = trim($_GET['c_hasta'] ?? '');

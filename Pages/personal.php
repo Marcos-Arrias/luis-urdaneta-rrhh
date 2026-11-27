@@ -110,22 +110,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 registrarHistorial($pdo, 'Personal', 'ACTUALIZAR', "Actualizó al trabajador C.I: $cedula", $personal_id);
             }
 
+           // 1. Contactos normalizados (Email y Dirección Habitación en personal_contactos)
+            $pdo->prepare("DELETE FROM personal_contactos WHERE personal_id=? AND tipo_contacto IN ('Email', 'Dirección Habitación', 'Dirección')")->execute([$personal_id]);
+            if (!empty(trim($_POST['correo_electronico'] ?? ''))) {
+                $pdo->prepare("INSERT INTO personal_contactos (personal_id, tipo_contacto, valor) VALUES (?, 'Email', ?)")->execute([$personal_id, trim($_POST['correo_electronico'])]);
+            }
+            if (!empty(trim($_POST['direccion_habitacion'] ?? ''))) {
+                $pdo->prepare("INSERT INTO personal_contactos (personal_id, tipo_contacto, valor) VALUES (?, 'Dirección Habitación', ?)")->execute([$personal_id, trim($_POST['direccion_habitacion'])]);
+            }
+
+            // 2. Resolver llaves foráneas de catálogos 3FN
+            $banco_id         = resolverBancoId($pdo, $_POST['banco_nomina'] ?? '', $_POST['cuenta_bancaria'] ?? '');
+            $dependencia_id   = resolverDependenciaId($pdo, $_POST['dependencia'] ?? '', $_POST['codigo_dependencia'] ?? '');
+            $cargo_nominal_id = resolverCargoNominalId($pdo, $_POST['cargo_nominal'] ?? '', $_POST['codigo_cargo'] ?? '');
+            $parroquia_id     = resolverParroquiaId($pdo, $_POST['municipio'] ?? '', $_POST['parroquia'] ?? '');
+
             $stmtExtra = $pdo->prepare("
                 INSERT INTO personal_datos_adicionales (
-                    personal_id, estado_civil, cantidad_hijos, etnia, fecha_ingreso_mppe, dependencia, codigo_dependencia,
-                    turno, nivel_academico, correo_electronico, banco_nomina, cuenta_bancaria, cargo_nominal, codigo_cargo,
-                    horas_laborales, direccion_habitacion, municipio, parroquia, centro_votacion, patologias, medicamentos_permanentes,
-                    tipo_sangre, alergias_medicas, condiciones_especiales, talla_camisa, talla_pantalon, talla_calzado
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    personal_id, estado_civil, cantidad_hijos, nivel_academico, tipo_sangre,
+                    talla_camisa, talla_pantalon, talla_calzado, banco_id, cuenta_bancaria, etnia,
+                    fecha_ingreso_mppe, dependencia_id, turno, cargo_nominal_id, horas_laborales,
+                    parroquia_id, centro_votacion
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
-                    estado_civil=VALUES(estado_civil), cantidad_hijos=VALUES(cantidad_hijos), etnia=VALUES(etnia), fecha_ingreso_mppe=VALUES(fecha_ingreso_mppe),
-                    dependencia=VALUES(dependencia), codigo_dependencia=VALUES(codigo_dependencia), turno=VALUES(turno), nivel_academico=VALUES(nivel_academico),
-                    correo_electronico=VALUES(correo_electronico), banco_nomina=VALUES(banco_nomina), cuenta_bancaria=VALUES(cuenta_bancaria), cargo_nominal=VALUES(cargo_nominal),
-                    codigo_cargo=VALUES(codigo_cargo), horas_laborales=VALUES(horas_laborales), direccion_habitacion=VALUES(direccion_habitacion), municipio=VALUES(municipio),
-                    parroquia=VALUES(parroquia), centro_votacion=VALUES(centro_votacion), patologias=VALUES(patologias), medicamentos_permanentes=VALUES(medicamentos_permanentes),
-                    tipo_sangre=VALUES(tipo_sangre), alergias_medicas=VALUES(alergias_medicas), condiciones_especiales=VALUES(condiciones_especiales),
-                    talla_camisa=VALUES(talla_camisa), talla_pantalon=VALUES(talla_pantalon), talla_calzado=VALUES(talla_calzado)
+                    estado_civil=VALUES(estado_civil), cantidad_hijos=VALUES(cantidad_hijos), nivel_academico=VALUES(nivel_academico),
+                    tipo_sangre=VALUES(tipo_sangre), talla_camisa=VALUES(talla_camisa), talla_pantalon=VALUES(talla_pantalon),
+                    talla_calzado=VALUES(talla_calzado), banco_id=VALUES(banco_id), cuenta_bancaria=VALUES(cuenta_bancaria),
+                    etnia=VALUES(etnia), fecha_ingreso_mppe=VALUES(fecha_ingreso_mppe), dependencia_id=VALUES(dependencia_id),
+                    turno=VALUES(turno), cargo_nominal_id=VALUES(cargo_nominal_id), horas_laborales=VALUES(horas_laborales),
+                    parroquia_id=VALUES(parroquia_id), centro_votacion=VALUES(centro_votacion)
             ");
+            $stmtExtra->execute([
+                $personal_id,
+                $_POST['estado_civil'] ?? 'Soltero/a',
+                intval($_POST['cantidad_hijos'] ?? 0),
+                $_POST['nivel_academico'] ?? null,
+                $_POST['tipo_sangre'] ?? null,
+                $_POST['talla_camisa'] ?? null,
+                $_POST['talla_pantalon'] ?? null,
+                $_POST['talla_calzado'] ?? null,
+                $banco_id,
+                $_POST['cuenta_bancaria'] ?? null,
+                $_POST['etnia'] ?? null,
+                !empty($_POST['fecha_ingreso_mppe']) ? $_POST['fecha_ingreso_mppe'] : null,
+                $dependencia_id,
+                $_POST['turno'] ?? 'Mañana',
+                $cargo_nominal_id,
+                intval($_POST['horas_laborales'] ?? 0),
+                $parroquia_id,
+                $_POST['centro_votacion'] ?? null
+            ]);
+
+            // 3. Salud y patologías atómicas (1FN)
+            sincronizarPatologiasPersonal(
+                $pdo,
+                $personal_id,
+                $_POST['patologias'] ?? '',
+                $_POST['alergias_medicas'] ?? '',
+                $_POST['condiciones_especiales'] ?? '',
+                $_POST['medicamentos_permanentes'] ?? ''
+            );
+            
             $stmtExtra->execute([$personal_id, $_POST['estado_civil']??'Soltero/a', intval($_POST['cantidad_hijos']??0), $_POST['etnia']??null, !empty($_POST['fecha_ingreso_mppe'])?$_POST['fecha_ingreso_mppe']:null, $_POST['dependencia']??null, $_POST['codigo_dependencia']??null, $_POST['turno']??'Mañana', $_POST['nivel_academico']??null, $_POST['correo_electronico']??null, $_POST['banco_nomina']??null, $_POST['cuenta_bancaria']??null, $_POST['cargo_nominal']??null, $_POST['codigo_cargo']??null, intval($_POST['horas_laborales']??0), $_POST['direccion_habitacion']??null, $_POST['municipio']??null, $_POST['parroquia']??null, $_POST['centro_votacion']??null, $_POST['patologias']??null, $_POST['medicamentos_permanentes']??null, $_POST['tipo_sangre']??null, $_POST['alergias_medicas']??null, $_POST['condiciones_especiales']??null, $_POST['talla_camisa']??null, $_POST['talla_pantalon']??null, $_POST['talla_calzado']??null]);
 
             $seleccionados = array_map('intval', $_POST['vincular_documentos_existentes'] ?? []);
@@ -226,6 +271,16 @@ $sql = "
            TIMESTAMPDIFF(YEAR, pda.fecha_ingreso_mppe, CURDATE()) as anios_servicio,
            pc.cargo_area_id, c.nombre as cargo_nombre, c.descripcion as cargo_descripcion,
            (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Teléfono Personal' LIMIT 1) as telefono,
+           (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto = 'Email' LIMIT 1) as correo_electronico,
+           (SELECT valor FROM personal_contactos WHERE personal_id = p.id AND tipo_contacto IN ('Dirección Habitación', 'Dirección') LIMIT 1) as direccion_habitacion,
+           cb.nombre as banco_nomina,
+           cd.nombre as dependencia, cd.codigo as codigo_dependencia,
+           ccn.denominacion as cargo_nominal, ccn.codigo as codigo_cargo,
+           cm.nombre as municipio, cp.nombre as parroquia,
+           (SELECT GROUP_CONCAT(cp_pat.nombre SEPARATOR ', ') FROM personal_salud_patologias psp JOIN cat_patologias cp_pat ON psp.patologia_id = cp_pat.id WHERE psp.personal_id = p.id AND cp_pat.tipo = 'Enfermedad Crónica') as patologias,
+           (SELECT GROUP_CONCAT(cp_ale.nombre SEPARATOR ', ') FROM personal_salud_patologias psp JOIN cat_patologias cp_ale ON psp.patologia_id = cp_ale.id WHERE psp.personal_id = p.id AND cp_ale.tipo = 'Alergia') as alergias_medicas,
+           (SELECT GROUP_CONCAT(cp_con.nombre SEPARATOR ', ') FROM personal_salud_patologias psp JOIN cat_patologias cp_con ON psp.patologia_id = cp_con.id WHERE psp.personal_id = p.id AND cp_con.tipo = 'Condición Especial') as condiciones_especiales,
+           (SELECT GROUP_CONCAT(DISTINCT NULLIF(psp.medicamento_permanente, '') SEPARATOR ', ') FROM personal_salud_patologias psp WHERE psp.personal_id = p.id) as medicamentos_permanentes,
            (SELECT d.ruta_archivo FROM documentos d 
             JOIN documentos_enlaces de ON d.id = de.documento_id 
             JOIN cat_tipos_documentos td ON d.tipo_documento_id = td.id
@@ -250,8 +305,14 @@ $sql = "
     INNER JOIN personal_cargos pc ON p.id = pc.personal_id AND pc.estado_cargo = 'Vigente'
     INNER JOIN cat_cargos_areas c ON pc.cargo_area_id = c.id 
     LEFT JOIN personal_datos_adicionales pda ON p.id = pda.personal_id
+    LEFT JOIN cat_bancos cb ON pda.banco_id = cb.id
+    LEFT JOIN cat_dependencias cd ON pda.dependencia_id = cd.id
+    LEFT JOIN cat_cargos_nominales ccn ON pda.cargo_nominal_id = ccn.id
+    LEFT JOIN cat_parroquias cp ON pda.parroquia_id = cp.id
+    LEFT JOIN cat_municipios cm ON cp.municipio_id = cm.id
     WHERE c.tipo_personal_id = :tipo 
 ";
+
 if ($filtro_cargo) { $sql .= " AND c.id = :cargo "; }
 $sql .= " ORDER BY p.apellidos ASC";
 
