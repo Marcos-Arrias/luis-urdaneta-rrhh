@@ -9,7 +9,6 @@ $username = 'root';
 $password = '';     
 
 try {
-    // 1. CONEXIÓN AL MOTOR MYSQL Y SELECCIÓN DE BASE DE DATOS
     $pdo = new PDO("mysql:host=$host;charset=utf8mb4", $username, $password);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
@@ -18,7 +17,7 @@ try {
     $pdo->exec("USE `$dbname`");
 
     // =========================================================================
-    // 2. DETECCIÓN RÁPIDA DE PARTES FALTANTES (TABLAS, COLUMNAS Y RUTINAS)
+    // 1. DETECCIÓN RÁPIDA DE ESTRUCTURA Y PARTES FALTANTES
     // =========================================================================
     $tablasRequeridas = [
         'cat_municipios', 'cat_parroquias', 'cat_dependencias', 'cat_cargos_nominales',
@@ -47,6 +46,7 @@ try {
         'personal_datos_adicionales.cargo_nominal_id',
         'personal_datos_adicionales.parroquia_id',
         'asistencias.cierre_automatico',
+        'cronograma_eventos.usuario_id',
         'cronograma_participantes.id',
         'cronograma_participantes.rol_participacion',
         'organigrama_jerarquia.id',
@@ -54,12 +54,20 @@ try {
         'organigrama_jerarquia.estado_jerarquia',
         'usuarios_sistema.rol_id',
         'usuarios_sistema.ultimo_login'
-        
     ];
 
-    $faltanPartes = false;
-    foreach ($tablasRequeridas as $tReq) {
-        if (!isset($tablasExistentes[$tReq])) { $faltanPartes = true; break; }
+    $hayColsLegacy = isset($colsExistentes['personal_datos_adicionales.correo_electronico'])
+                  || isset($colsExistentes['personal_datos_adicionales.banco_nomina'])
+                  || isset($colsExistentes['personal_datos_adicionales.dependencia'])
+                  || isset($colsExistentes['personal_datos_adicionales.patologias'])
+                  || isset($colsExistentes['cronograma_eventos.creador_id'])
+                  || isset($tablasExistentes['personal_archivos_digitales']);
+
+    $faltanPartes = $hayColsLegacy;
+    if (!$faltanPartes) {
+        foreach ($tablasRequeridas as $tReq) {
+            if (!isset($tablasExistentes[$tReq])) { $faltanPartes = true; break; }
+        }
     }
     if (!$faltanPartes) {
         foreach ($columnasClaveRequeridas as $cReq) {
@@ -73,11 +81,10 @@ try {
     }
 
     // =========================================================================
-    // 3. GENERACIÓN Y PARCHEO AUTOMÁTICO SI FALTA CUALQUIER PARTE
+    // 2. CREACIÓN Y MIGRACIÓN ESTRICTA A 3FN / BCNF
     // =========================================================================
     if ($faltanPartes) {
 
-        // A. CATÁLOGOS GEOGRÁFICOS, MINISTERIALES, BANCARIOS Y MÉDICOS (3FN)
         $pdo->exec("CREATE TABLE IF NOT EXISTS `cat_municipios` (
             `id` INT AUTO_INCREMENT PRIMARY KEY,
             `nombre` VARCHAR(80) NOT NULL UNIQUE
@@ -88,7 +95,7 @@ try {
             `municipio_id` INT NOT NULL,
             `nombre` VARCHAR(80) NOT NULL,
             UNIQUE KEY `uk_municipio_parroquia` (`municipio_id`, `nombre`),
-            CONSTRAINT `fk_parroquia_municipio` FOREIGN KEY (`municipio_id`) REFERENCES `cat_municipios` (`id`) ON DELETE CASCADE
+            CONSTRAINT `fk_parroquia_municipio` FOREIGN KEY (`municipio_id`) REFERENCES `cat_municipios` (`id`) ON DELETE RESTRICT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS `cat_dependencias` (
@@ -141,7 +148,6 @@ try {
             `nombre` VARCHAR(60) NOT NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-        // B. NÚCLEO DEL PERSONAL Y TABLAS SATÉLITE
         $pdo->exec("CREATE TABLE IF NOT EXISTS `personal` (
             `id` INT AUTO_INCREMENT PRIMARY KEY, 
             `cedula` VARCHAR(20) NOT NULL UNIQUE, 
@@ -171,6 +177,7 @@ try {
             FOREIGN KEY (`personal_id`) REFERENCES `personal`(`id`) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
+        // TABLA ESTRICTAMENTE EN 3FN (Sin redundancias ni dependencias transitivas)
         $pdo->exec("CREATE TABLE IF NOT EXISTS `personal_datos_adicionales` (
             `id` INT AUTO_INCREMENT PRIMARY KEY, 
             `personal_id` INT NOT NULL UNIQUE, 
@@ -191,28 +198,13 @@ try {
             `horas_laborales` INT DEFAULT 0,
             `parroquia_id` INT DEFAULT NULL,
             `centro_votacion` VARCHAR(150) DEFAULT NULL,
-            /* Columnas de compatibilidad para los formularios actuales */
-            `alergias_medicas` TEXT DEFAULT NULL, 
-            `condiciones_especiales` TEXT DEFAULT NULL, 
-            `banco_nomina` VARCHAR(50) DEFAULT NULL, 
-            `dependencia` VARCHAR(100) DEFAULT NULL,
-            `codigo_dependencia` VARCHAR(50) DEFAULT NULL,
-            `cargo_nominal` VARCHAR(100) DEFAULT NULL,
-            `codigo_cargo` VARCHAR(50) DEFAULT NULL,
-            `correo_electronico` VARCHAR(120) DEFAULT NULL,
-            `direccion_habitacion` TEXT DEFAULT NULL,
-            `municipio` VARCHAR(80) DEFAULT NULL,
-            `parroquia` VARCHAR(80) DEFAULT NULL,
-            `patologias` TEXT DEFAULT NULL,
-            `medicamentos_permanentes` TEXT DEFAULT NULL,
             FOREIGN KEY (`personal_id`) REFERENCES `personal`(`id`) ON DELETE CASCADE,
-            CONSTRAINT `fk_pda_banco` FOREIGN KEY (`banco_id`) REFERENCES `cat_bancos`(`id`) ON DELETE SET NULL,
-            CONSTRAINT `fk_pda_dependencia` FOREIGN KEY (`dependencia_id`) REFERENCES `cat_dependencias`(`id`) ON DELETE SET NULL,
-            CONSTRAINT `fk_pda_cargo_nom` FOREIGN KEY (`cargo_nominal_id`) REFERENCES `cat_cargos_nominales`(`id`) ON DELETE SET NULL,
-            CONSTRAINT `fk_pda_parroquia` FOREIGN KEY (`parroquia_id`) REFERENCES `cat_parroquias`(`id`) ON DELETE SET NULL
+            CONSTRAINT `fk_pda_banco` FOREIGN KEY (`banco_id`) REFERENCES `cat_bancos`(`id`) ON DELETE RESTRICT,
+            CONSTRAINT `fk_pda_dependencia` FOREIGN KEY (`dependencia_id`) REFERENCES `cat_dependencias`(`id`) ON DELETE RESTRICT,
+            CONSTRAINT `fk_pda_cargo_nom` FOREIGN KEY (`cargo_nominal_id`) REFERENCES `cat_cargos_nominales`(`id`) ON DELETE RESTRICT,
+            CONSTRAINT `fk_pda_parroquia` FOREIGN KEY (`parroquia_id`) REFERENCES `cat_parroquias`(`id`) ON DELETE RESTRICT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-        // Parcheo seguro si personal_datos_adicionales ya existía en versión antigua
         $pdo->exec("ALTER TABLE `personal_datos_adicionales` ADD COLUMN IF NOT EXISTS `banco_id` INT DEFAULT NULL AFTER `talla_calzado`");
         $pdo->exec("ALTER TABLE `personal_datos_adicionales` ADD COLUMN IF NOT EXISTS `dependencia_id` INT DEFAULT NULL AFTER `fecha_ingreso_mppe`");
         $pdo->exec("ALTER TABLE `personal_datos_adicionales` ADD COLUMN IF NOT EXISTS `cargo_nominal_id` INT DEFAULT NULL AFTER `turno`");
@@ -225,10 +217,10 @@ try {
                 try { $pdo->exec("ALTER TABLE `$tabla` ADD CONSTRAINT `$nombreFK` $definicion"); } catch (PDOException $e) {}
             }
         };
-        $agregarFK('personal_datos_adicionales', 'fk_pda_banco', 'FOREIGN KEY (`banco_id`) REFERENCES `cat_bancos`(`id`) ON DELETE SET NULL');
-        $agregarFK('personal_datos_adicionales', 'fk_pda_dependencia', 'FOREIGN KEY (`dependencia_id`) REFERENCES `cat_dependencias`(`id`) ON DELETE SET NULL');
-        $agregarFK('personal_datos_adicionales', 'fk_pda_cargo_nom', 'FOREIGN KEY (`cargo_nominal_id`) REFERENCES `cat_cargos_nominales`(`id`) ON DELETE SET NULL');
-        $agregarFK('personal_datos_adicionales', 'fk_pda_parroquia', 'FOREIGN KEY (`parroquia_id`) REFERENCES `cat_parroquias`(`id`) ON DELETE SET NULL');
+        $agregarFK('personal_datos_adicionales', 'fk_pda_banco', 'FOREIGN KEY (`banco_id`) REFERENCES `cat_bancos`(`id`) ON DELETE RESTRICT');
+        $agregarFK('personal_datos_adicionales', 'fk_pda_dependencia', 'FOREIGN KEY (`dependencia_id`) REFERENCES `cat_dependencias`(`id`) ON DELETE RESTRICT');
+        $agregarFK('personal_datos_adicionales', 'fk_pda_cargo_nom', 'FOREIGN KEY (`cargo_nominal_id`) REFERENCES `cat_cargos_nominales`(`id`) ON DELETE RESTRICT');
+        $agregarFK('personal_datos_adicionales', 'fk_pda_parroquia', 'FOREIGN KEY (`parroquia_id`) REFERENCES `cat_parroquias`(`id`) ON DELETE RESTRICT');
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS `personal_salud_patologias` (
             `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -241,7 +233,6 @@ try {
             CONSTRAINT `fk_psp_patologia` FOREIGN KEY (`patologia_id`) REFERENCES `cat_patologias`(`id`) ON DELETE RESTRICT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-        // C. SISTEMA GENERALIZADO DE DOCUMENTOS DIGITALES
         $pdo->exec("CREATE TABLE IF NOT EXISTS `documentos` (
             `id` INT AUTO_INCREMENT PRIMARY KEY,
             `tipo_documento_id` INT NOT NULL,
@@ -252,7 +243,7 @@ try {
             `tamano_bytes` BIGINT DEFAULT 0,
             `hash_verificacion` VARCHAR(64) DEFAULT NULL,
             `fecha_subida` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            CONSTRAINT `fk_doc_tipo` FOREIGN KEY (`tipo_documento_id`) REFERENCES `cat_tipos_documentos`(`id`)
+            CONSTRAINT `fk_doc_tipo` FOREIGN KEY (`tipo_documento_id`) REFERENCES `cat_tipos_documentos`(`id`) ON DELETE RESTRICT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS `documentos_enlaces` (
@@ -265,7 +256,6 @@ try {
             CONSTRAINT `fk_enlace_documento` FOREIGN KEY (`documento_id`) REFERENCES `documentos`(`id`) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-        // D. MÓDULOS OPERATIVOS CON IDs SUBROGADOS Y CIERRE DE JORNADA
         $pdo->exec("CREATE TABLE IF NOT EXISTS `asistencias` (
             `id` INT AUTO_INCREMENT PRIMARY KEY, 
             `personal_id` INT NOT NULL, 
@@ -291,6 +281,20 @@ try {
             FOREIGN KEY (`personal_id`) REFERENCES `personal`(`id`) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `usuarios_sistema` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY, 
+            `personal_id` INT NULL, 
+            `rol_id` INT NOT NULL DEFAULT 1, 
+            `username` VARCHAR(50) NOT NULL UNIQUE, 
+            `password_hash` VARCHAR(255) NOT NULL, 
+            `estado` ENUM('Activo', 'Bloqueado') DEFAULT 'Activo',
+            `ultimo_login` TIMESTAMP NULL DEFAULT NULL,
+            FOREIGN KEY (`personal_id`) REFERENCES `personal`(`id`) ON DELETE SET NULL, 
+            FOREIGN KEY (`rol_id`) REFERENCES `cat_roles_sistema`(`id`) ON DELETE RESTRICT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+        $pdo->exec("ALTER TABLE `usuarios_sistema` ADD COLUMN IF NOT EXISTS `rol_id` INT NOT NULL DEFAULT 1 AFTER `personal_id`");
+        $pdo->exec("ALTER TABLE `usuarios_sistema` ADD COLUMN IF NOT EXISTS `ultimo_login` TIMESTAMP NULL DEFAULT NULL AFTER `estado`");
+
         $pdo->exec("CREATE TABLE IF NOT EXISTS `cronograma_eventos` (
             `id` INT AUTO_INCREMENT PRIMARY KEY, 
             `fecha` DATE NOT NULL, 
@@ -298,8 +302,17 @@ try {
             `hora_fin` TIME NOT NULL, 
             `titulo` VARCHAR(150) NOT NULL, 
             `descripcion` TEXT DEFAULT NULL, 
-            `creador_id` INT NULL
+            `usuario_id` INT NULL,
+            CONSTRAINT `fk_cronograma_usuario` FOREIGN KEY (`usuario_id`) REFERENCES `usuarios_sistema`(`id`) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        // Convertir creador_id antiguo en usuario_id con llave foránea real
+        if (isset($colsExistentes['cronograma_eventos.creador_id']) && !isset($colsExistentes['cronograma_eventos.usuario_id'])) {
+            try { $pdo->exec("ALTER TABLE `cronograma_eventos` CHANGE COLUMN `creador_id` `usuario_id` INT NULL DEFAULT NULL"); } catch (Exception $e) {}
+        }
+        $pdo->exec("ALTER TABLE `cronograma_eventos` ADD COLUMN IF NOT EXISTS `usuario_id` INT NULL DEFAULT NULL");
+        $pdo->exec("UPDATE `cronograma_eventos` SET `usuario_id` = NULL WHERE `usuario_id` IS NOT NULL AND `usuario_id` NOT IN (SELECT `id` FROM `usuarios_sistema`)");
+        $agregarFK('cronograma_eventos', 'fk_cronograma_usuario', 'FOREIGN KEY (`usuario_id`) REFERENCES `usuarios_sistema`(`id`) ON DELETE SET NULL');
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS `cronograma_participantes` (
             `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -310,7 +323,6 @@ try {
             FOREIGN KEY (`evento_id`) REFERENCES `cronograma_eventos`(`id`) ON DELETE CASCADE, 
             FOREIGN KEY (`personal_id`) REFERENCES `personal`(`id`) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-
         if (!isset($colsExistentes['cronograma_participantes.id'])) {
             try { $pdo->exec("ALTER TABLE `cronograma_participantes` ADD UNIQUE KEY `uk_evento_participante` (`evento_id`, `personal_id`)"); } catch (Exception $e) {}
             try { $pdo->exec("ALTER TABLE `cronograma_participantes` DROP PRIMARY KEY, ADD COLUMN `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST"); } catch (Exception $e) {}
@@ -328,28 +340,12 @@ try {
             CONSTRAINT `organigrama_fk_personal` FOREIGN KEY (`personal_id`) REFERENCES `personal`(`id`) ON DELETE CASCADE,
             CONSTRAINT `organigrama_fk_jefe` FOREIGN KEY (`jefe_id`) REFERENCES `personal`(`id`) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-
         if (!isset($colsExistentes['organigrama_jerarquia.id'])) {
             try { $pdo->exec("ALTER TABLE `organigrama_jerarquia` ADD UNIQUE KEY `uk_personal_nodo` (`personal_id`)"); } catch (Exception $e) {}
             try { $pdo->exec("ALTER TABLE `organigrama_jerarquia` DROP PRIMARY KEY, ADD COLUMN `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST"); } catch (Exception $e) {}
         }
         $pdo->exec("ALTER TABLE `organigrama_jerarquia` ADD COLUMN IF NOT EXISTS `fecha_asignacion` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP");
         $pdo->exec("ALTER TABLE `organigrama_jerarquia` ADD COLUMN IF NOT EXISTS `estado_jerarquia` ENUM('Vigente','Reasignado') DEFAULT 'Vigente'");
-
-        // E. SEGURIDAD HÍBRIDA (RBAC + ReBAC), SESIONES Y AUDITORÍA
-        $pdo->exec("CREATE TABLE IF NOT EXISTS `usuarios_sistema` (
-            `id` INT AUTO_INCREMENT PRIMARY KEY, 
-            `personal_id` INT NULL, 
-            `rol_id` INT NOT NULL DEFAULT 1, 
-            `username` VARCHAR(50) NOT NULL UNIQUE, 
-            `password_hash` VARCHAR(255) NOT NULL, 
-            `estado` ENUM('Activo', 'Bloqueado') DEFAULT 'Activo',
-            `ultimo_login` TIMESTAMP NULL DEFAULT NULL,
-            FOREIGN KEY (`personal_id`) REFERENCES `personal`(`id`) ON DELETE SET NULL, 
-            FOREIGN KEY (`rol_id`) REFERENCES `cat_roles_sistema`(`id`) ON DELETE RESTRICT
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-        $pdo->exec("ALTER TABLE `usuarios_sistema` ADD COLUMN IF NOT EXISTS `rol_id` INT NOT NULL DEFAULT 1 AFTER `personal_id`");
-        $pdo->exec("ALTER TABLE `usuarios_sistema` ADD COLUMN IF NOT EXISTS `ultimo_login` TIMESTAMP NULL DEFAULT NULL AFTER `estado`");
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS `rebac_recursos` (
             `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -400,7 +396,6 @@ try {
             FOREIGN KEY (`usuario_id`) REFERENCES `usuarios_sistema`(`id`) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-
         $pdo->exec("CREATE TABLE IF NOT EXISTS `historial_auditoria` (
             `id` INT AUTO_INCREMENT PRIMARY KEY, 
             `usuario_id` INT NULL, 
@@ -413,7 +408,7 @@ try {
             FOREIGN KEY (`usuario_id`) REFERENCES `usuarios_sistema`(`id`) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
-        // F. DATOS SEMILLA DE CATÁLOGOS Y SEGURIDAD
+        // DATOS SEMILLA BASE
         if ($pdo->query("SELECT COUNT(*) FROM cat_municipios")->fetchColumn() == 0) {
             $pdo->exec("INSERT IGNORE INTO cat_municipios (id, nombre) VALUES (1, 'Maracaibo'), (2, 'San Francisco')");
             $pdo->exec("INSERT IGNORE INTO cat_parroquias (id, municipio_id, nombre) VALUES (1, 1, 'Chiquinquirá'), (2, 1, 'Olegario Villalobos'), (3, 2, 'San Francisco')");
@@ -425,7 +420,7 @@ try {
             $pdo->exec("INSERT IGNORE INTO cat_cargos_nominales (id, codigo, denominacion) VALUES (1, 'DOC-IV', 'Docente IV'), (2, 'ADM-II', 'Asistente Administrativo II'), (3, 'OBR-I', 'Obrero de Mantenimiento')");
         }
         if ($pdo->query("SELECT COUNT(*) FROM cat_bancos")->fetchColumn() == 0) {
-            $pdo->exec("INSERT IGNORE INTO cat_bancos (id, codigo, nombre) VALUES (1, '0102', 'Banco de Venezuela'), (2, '0105', 'Banco Mercantil'), (3, '0108', 'Banco Provincial')");
+            $pdo->exec("INSERT IGNORE INTO cat_bancos (id, codigo, nombre) VALUES (1, '0102', 'Banco de Venezuela'), (2, '0105', 'Banco Mercantil'), (3, '0108', 'Banco Provincial'), (4, '0134', 'Banesco')");
         }
         if ($pdo->query("SELECT COUNT(*) FROM cat_patologias")->fetchColumn() == 0) {
             $pdo->exec("INSERT IGNORE INTO cat_patologias (id, tipo, nombre) VALUES (1, 'Alergia', 'Penicilina'), (2, 'Enfermedad Crónica', 'Hipertensión Arterial'), (3, 'Enfermedad Crónica', 'Diabetes Tipo II'), (4, 'Alergia', 'Polvo / Ácaros')");
@@ -433,10 +428,8 @@ try {
         if ($pdo->query("SELECT COUNT(*) FROM cat_tipos_personal")->fetchColumn() == 0) {
             $pdo->exec("INSERT IGNORE INTO cat_tipos_personal (id, nombre) VALUES (1, 'Docente'), (2, 'Administrativo'), (3, 'Obrero')");
             $pdo->exec("INSERT IGNORE INTO cat_cargos_areas (tipo_personal_id, nombre, descripcion) VALUES 
-                (1, 'Biología', 'Cátedra de Ciencias Naturales'), 
-                (1, 'Matemáticas', 'Cátedra de Ciencias Exactas'), 
-                (2, 'Director/a', 'Dirección e Inspección del Plantel'), 
-                (2, 'Secretaria', 'Atención y Control de Expedientes'), 
+                (1, 'Biología', 'Cátedra de Ciencias Naturales'), (1, 'Matemáticas', 'Cátedra de Ciencias Exactas'), 
+                (2, 'Director/a', 'Dirección e Inspección del Plantel'), (2, 'Secretaria', 'Atención y Control de Expedientes'), 
                 (3, 'Mantenimiento General', 'Mantenimiento de Planta Física')");
         }
         if ($pdo->query("SELECT COUNT(*) FROM cat_tipos_documentos")->fetchColumn() == 0) {
@@ -444,12 +437,10 @@ try {
                 (1, 'CED', 'Cédula de Identidad'), (2, 'FOT', 'Fotografía Tamaño Carnet'),
                 (3, 'TIT', 'Título Universitario o Certificado'), (4, 'MED', 'Informe o Certificado Médico'),
                 (5, 'SOP', 'Soporte de Justificación / Reposo'), (6, 'MEM', 'Memorándum o Acta Institucional'),
-                (7, 'OTR', 'Otro Soporte Digital')");
+                (7, 'OTR', 'Otro Documento')");
         }
 
-        // Rol, Usuario 'admin' (admin123) y Grafo ReBAC Completo
         $pdo->exec("INSERT IGNORE INTO cat_roles_sistema (id, nombre, nivel_acceso) VALUES (1, 'SuperAdministrador', 10)");
-
         if ($pdo->query("SELECT COUNT(*) FROM usuarios_sistema WHERE username = 'admin'")->fetchColumn() == 0) {
             $hash = password_hash('admin123', PASSWORD_BCRYPT);
             $pdo->exec("INSERT INTO usuarios_sistema (id, rol_id, username, password_hash, estado) VALUES (1, 1, 'admin', '$hash', 'Activo')");
@@ -466,19 +457,16 @@ try {
             (6, 'configuracion', 'Catálogos, apariencia, respaldo e importación'),
             (7, 'horarios', 'Calendario laboral de turnos'),
             (8, 'auditoria', 'Historial y bitácora del sistema')");
-
         $pdo->exec("INSERT IGNORE INTO rebac_tipos_relacion (id, clave_relacion, descripcion) VALUES
             (1, 'superadministrador', 'Control total sin restricciones de objeto'),
             (2, 'supervisor_directo', 'Jefe jerárquico según el organigrama'),
             (3, 'propietario', 'El propio usuario es dueño del recurso/ficha'),
             (4, 'coordinador_area', 'Gestor del departamento o especialidad'),
             (5, 'lector', 'Permiso únicamente de consulta')");
-
         $pdo->exec("INSERT INTO rebac_politicas_permisos (relacion_id, recurso_id, puede_crear, puede_leer, puede_editar, puede_eliminar) VALUES
             (1,1,1,1,1,1), (1,2,1,1,1,1), (1,3,1,1,1,1), (1,4,1,1,1,1),
             (1,5,1,1,1,1), (1,6,1,1,1,1), (1,7,1,1,1,1), (1,8,1,1,1,1)
             ON DUPLICATE KEY UPDATE puede_crear=1, puede_leer=1, puede_editar=1, puede_eliminar=1");
-
         $adminIdBD = $pdo->query("SELECT id FROM usuarios_sistema WHERE username = 'admin' LIMIT 1")->fetchColumn();
         if ($adminIdBD) {
             for ($recId = 1; $recId <= 8; $recId++) {
@@ -487,7 +475,72 @@ try {
             }
         }
 
-        // G. PROCEDIMIENTO ALMACENADO Y EVENTO DE CIERRE AUTOMÁTICO DE JORNADA
+        // MIGRACIÓN AUTOMÁTICA SIN PÉRDIDA DE COLUMNAS LEGACY -> TABLAS 3FN
+        $tieneColsViejasPda = isset($colsExistentes['personal_datos_adicionales.correo_electronico'])
+                           || isset($colsExistentes['personal_datos_adicionales.banco_nomina'])
+                           || isset($colsExistentes['personal_datos_adicionales.dependencia'])
+                           || isset($colsExistentes['personal_datos_adicionales.patologias']);
+
+        if ($tieneColsViejasPda) {
+            $filasViejas = $pdo->query("SELECT * FROM personal_datos_adicionales")->fetchAll();
+            foreach ($filasViejas as $fv) {
+                $pid = (int)$fv['personal_id'];
+                if (!empty(trim($fv['correo_electronico'] ?? ''))) {
+                    $chk = $pdo->prepare("SELECT id FROM personal_contactos WHERE personal_id=? AND tipo_contacto='Email'");
+                    $chk->execute([$pid]);
+                    if (!$chk->fetchColumn()) {
+                        $pdo->prepare("INSERT INTO personal_contactos (personal_id, tipo_contacto, valor) VALUES (?, 'Email', ?)")->execute([$pid, trim($fv['correo_electronico'])]);
+                    }
+                }
+                if (!empty(trim($fv['direccion_habitacion'] ?? ''))) {
+                    $chk = $pdo->prepare("SELECT id FROM personal_contactos WHERE personal_id=? AND tipo_contacto IN ('Dirección Habitación','Dirección')");
+                    $chk->execute([$pid]);
+                    if (!$chk->fetchColumn()) {
+                        $pdo->prepare("INSERT INTO personal_contactos (personal_id, tipo_contacto, valor) VALUES (?, 'Dirección Habitación', ?)")->execute([$pid, trim($fv['direccion_habitacion'])]);
+                    }
+                }
+                $bId = resolverBancoId($pdo, $fv['banco_nomina'] ?? '', $fv['cuenta_bancaria'] ?? '');
+                $dId = resolverDependenciaId($pdo, $fv['dependencia'] ?? '', $fv['codigo_dependencia'] ?? '');
+                $cId = resolverCargoNominalId($pdo, $fv['cargo_nominal'] ?? '', $fv['codigo_cargo'] ?? '');
+                $pId = resolverParroquiaId($pdo, $fv['municipio'] ?? '', $fv['parroquia'] ?? '');
+                $pdo->prepare("UPDATE personal_datos_adicionales SET banco_id=COALESCE(banco_id,?), dependencia_id=COALESCE(dependencia_id,?), cargo_nominal_id=COALESCE(cargo_nominal_id,?), parroquia_id=COALESCE(parroquia_id,?) WHERE id=?")
+                    ->execute([$bId, $dId, $cId, $pId, $fv['id']]);
+                sincronizarPatologiasPersonal($pdo, $pid, $fv['patologias'] ?? '', $fv['alergias_medicas'] ?? '', $fv['condiciones_especiales'] ?? '', $fv['medicamentos_permanentes'] ?? '');
+            }
+            foreach (['alergias_medicas','condiciones_especiales','banco_nomina','dependencia','codigo_dependencia','cargo_nominal','codigo_cargo','correo_electronico','direccion_habitacion','municipio','parroquia','patologias','medicamentos_permanentes'] as $colDrop) {
+                try { $pdo->exec("ALTER TABLE `personal_datos_adicionales` DROP COLUMN IF EXISTS `$colDrop`"); } catch (Exception $e) {}
+            }
+        }
+
+        // Migrar y eliminar tabla antigua personal_archivos_digitales si existía
+        if (isset($tablasExistentes['personal_archivos_digitales'])) {
+            $legacyDocs = $pdo->query("SELECT * FROM personal_archivos_digitales")->fetchAll();
+            foreach ($legacyDocs as $ld) {
+                $chk = $pdo->prepare("SELECT id FROM documentos WHERE codigo_archivo = ?");
+                $chk->execute([$ld['codigo_archivo']]);
+                $docExistId = $chk->fetchColumn();
+                if (!$docExistId) {
+                    $stT = $pdo->prepare("SELECT id FROM cat_tipos_documentos WHERE clave = ?");
+                    $stT->execute([$ld['tipo_documento_clave']]);
+                    $tipoDocId = $stT->fetchColumn() ?: 7;
+                    $tam = file_exists($ld['ruta_archivo']) ? filesize($ld['ruta_archivo']) : 0;
+                    $hash = file_exists($ld['ruta_archivo']) ? hash_file('sha256', $ld['ruta_archivo']) : null;
+                    $mime = $ld['mime_type'] ?: 'application/octet-stream';
+                    $pdo->prepare("INSERT INTO documentos (tipo_documento_id, codigo_archivo, nombre_original, ruta_archivo, mime_type, tamano_bytes, hash_verificacion, fecha_subida) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+                        ->execute([$tipoDocId, $ld['codigo_archivo'], $ld['nombre_original'], $ld['ruta_archivo'], $mime, $tam, $hash, $ld['fecha_subida']]);
+                    $docExistId = $pdo->lastInsertId();
+                }
+                $chkEnl = $pdo->prepare("SELECT id FROM documentos_enlaces WHERE documento_id = ? AND tabla_destino = 'personal' AND registro_id = ?");
+                $chkEnl->execute([$docExistId, $ld['personal_id']]);
+                if (!$chkEnl->fetchColumn()) {
+                    $pdo->prepare("INSERT INTO documentos_enlaces (documento_id, tabla_destino, registro_id, notas) VALUES (?, 'personal', ?, 'Migrado al archivo digital')")
+                        ->execute([$docExistId, $ld['personal_id']]);
+                }
+            }
+            try { $pdo->exec("DROP TABLE IF EXISTS `personal_archivos_digitales`"); } catch (Exception $e) {}
+        }
+
+        // PROCEDIMIENTO Y EVENTO DE CIERRE DIARIO
         $chkProc = $pdo->prepare("SELECT COUNT(*) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = 'sp_cierre_diario_asistencias'");
         $chkProc->execute([$dbname]);
         if ($chkProc->fetchColumn() == 0) {
@@ -530,7 +583,147 @@ try {
 }
 
 // =========================================================================
-// 4. FUNCIONES AUXILIARES GLOBALES Y MOTOR ReBAC
+// 3. HELPERS DE NORMALIZACIÓN 3FN PARA CATÁLOGOS
+// =========================================================================
+function resolverBancoId($pdo, $nombreBanco, $cuenta = '') {
+    $nombre = trim($nombreBanco ?? '');
+    $digitos = preg_replace('/[^0-9]/', '', $cuenta ?? '');
+    $cod = (strlen($digitos) >= 4) ? substr($digitos, 0, 4) : '';
+    if ($nombre === '' && $cod === '') return null;
+
+    if ($cod !== '') {
+        $st = $pdo->prepare("SELECT id FROM cat_bancos WHERE codigo = ? LIMIT 1");
+        $st->execute([$cod]);
+        if ($id = $st->fetchColumn()) return (int)$id;
+    }
+    if ($nombre !== '') {
+        $st = $pdo->prepare("SELECT id FROM cat_bancos WHERE LOWER(nombre) = LOWER(?) LIMIT 1");
+        $st->execute([$nombre]);
+        if ($id = $st->fetchColumn()) return (int)$id;
+    }
+    $codFinal = $cod !== '' ? $cod : strtoupper(substr(md5($nombre), 0, 4));
+    $nomFinal = $nombre !== '' ? $nombre : ('Banco ' . $codFinal);
+    $pdo->prepare("INSERT IGNORE INTO cat_bancos (codigo, nombre) VALUES (?, ?)")->execute([$codFinal, $nomFinal]);
+    $st = $pdo->prepare("SELECT id FROM cat_bancos WHERE codigo = ? LIMIT 1");
+    $st->execute([$codFinal]);
+    return (int)$st->fetchColumn() ?: null;
+}
+
+function resolverDependenciaId($pdo, $nombreDep, $codigoDep = '') {
+    $nombre = trim($nombreDep ?? '');
+    $codigo = trim($codigoDep ?? '');
+    if ($nombre === '' && $codigo === '') return null;
+
+    if ($codigo !== '') {
+        $st = $pdo->prepare("SELECT id FROM cat_dependencias WHERE codigo = ? LIMIT 1");
+        $st->execute([$codigo]);
+        if ($id = $st->fetchColumn()) return (int)$id;
+    }
+    if ($nombre !== '') {
+        $st = $pdo->prepare("SELECT id FROM cat_dependencias WHERE LOWER(nombre) = LOWER(?) LIMIT 1");
+        $st->execute([$nombre]);
+        if ($id = $st->fetchColumn()) return (int)$id;
+    }
+    $codFinal = $codigo !== '' ? $codigo : ('DEP-' . strtoupper(substr(md5($nombre), 0, 6)));
+    $nomFinal = $nombre !== '' ? $nombre : $codFinal;
+    $pdo->prepare("INSERT IGNORE INTO cat_dependencias (codigo, nombre) VALUES (?, ?)")->execute([$codFinal, $nomFinal]);
+    $st = $pdo->prepare("SELECT id FROM cat_dependencias WHERE codigo = ? LIMIT 1");
+    $st->execute([$codFinal]);
+    return (int)$st->fetchColumn() ?: null;
+}
+
+function resolverCargoNominalId($pdo, $denominacion, $codigoCargo = '') {
+    $nombre = trim($denominacion ?? '');
+    $codigo = trim($codigoCargo ?? '');
+    if ($nombre === '' && $codigo === '') return null;
+
+    if ($codigo !== '') {
+        $st = $pdo->prepare("SELECT id FROM cat_cargos_nominales WHERE codigo = ? LIMIT 1");
+        $st->execute([$codigo]);
+        if ($id = $st->fetchColumn()) return (int)$id;
+    }
+    if ($nombre !== '') {
+        $st = $pdo->prepare("SELECT id FROM cat_cargos_nominales WHERE LOWER(denominacion) = LOWER(?) LIMIT 1");
+        $st->execute([$nombre]);
+        if ($id = $st->fetchColumn()) return (int)$id;
+    }
+    $codFinal = $codigo !== '' ? $codigo : ('CN-' . strtoupper(substr(md5($nombre), 0, 6)));
+    $nomFinal = $nombre !== '' ? $nombre : $codFinal;
+    $pdo->prepare("INSERT IGNORE INTO cat_cargos_nominales (codigo, denominacion) VALUES (?, ?)")->execute([$codFinal, $nomFinal]);
+    $st = $pdo->prepare("SELECT id FROM cat_cargos_nominales WHERE codigo = ? LIMIT 1");
+    $st->execute([$codFinal]);
+    return (int)$st->fetchColumn() ?: null;
+}
+
+function resolverParroquiaId($pdo, $municipio, $parroquia) {
+    $mun = trim($municipio ?? '');
+    $par = trim($parroquia ?? '');
+    if ($mun === '' && $par === '') return null;
+    if ($mun === '') $mun = 'No Especificado';
+    if ($par === '') $par = 'General';
+
+    $stM = $pdo->prepare("SELECT id FROM cat_municipios WHERE LOWER(nombre) = LOWER(?) LIMIT 1");
+    $stM->execute([$mun]);
+    $munId = $stM->fetchColumn();
+    if (!$munId) {
+        $pdo->prepare("INSERT INTO cat_municipios (nombre) VALUES (?)")->execute([$mun]);
+        $munId = $pdo->lastInsertId();
+    }
+
+    $stP = $pdo->prepare("SELECT id FROM cat_parroquias WHERE municipio_id = ? AND LOWER(nombre) = LOWER(?) LIMIT 1");
+    $stP->execute([$munId, $par]);
+    $parId = $stP->fetchColumn();
+    if (!$parId) {
+        $pdo->prepare("INSERT INTO cat_parroquias (municipio_id, nombre) VALUES (?, ?)")->execute([$munId, $par]);
+        $parId = $pdo->lastInsertId();
+    }
+    return (int)$parId;
+}
+
+function sincronizarPatologiasPersonal($pdo, $personal_id, $patologiasStr, $alergiasStr, $condicionesStr, $medicamentosStr) {
+    $pdo->prepare("DELETE FROM personal_salud_patologias WHERE personal_id = ?")->execute([$personal_id]);
+
+    $grupos = [
+        'Enfermedad Crónica' => $patologiasStr,
+        'Alergia'            => $alergiasStr,
+        'Condición Especial' => $condicionesStr
+    ];
+    $med = trim($medicamentosStr ?? '');
+    $medAsignado = false;
+
+    foreach ($grupos as $tipo => $cadena) {
+        $items = array_filter(array_map('trim', preg_split('/[,;]+/', $cadena ?? '')));
+        foreach ($items as $item) {
+            if (in_array(mb_strtolower($item), ['ninguna', 'ninguno', 'no', 'n/a', '-', 's/r'])) continue;
+            $stPat = $pdo->prepare("SELECT id FROM cat_patologias WHERE tipo = ? AND LOWER(nombre) = LOWER(?) LIMIT 1");
+            $stPat->execute([$tipo, $item]);
+            $patId = $stPat->fetchColumn();
+            if (!$patId) {
+                $pdo->prepare("INSERT INTO cat_patologias (tipo, nombre) VALUES (?, ?)")->execute([$tipo, $item]);
+                $patId = $pdo->lastInsertId();
+            }
+            $medVal = (!$medAsignado && $med !== '' && !in_array(mb_strtolower($med), ['ninguno', 'no', 'n/a', '-'])) ? $med : null;
+            if ($medVal !== null) $medAsignado = true;
+            $pdo->prepare("INSERT IGNORE INTO personal_salud_patologias (personal_id, patologia_id, medicamento_permanente) VALUES (?, ?, ?)")
+                ->execute([$personal_id, $patId, $medVal]);
+        }
+    }
+
+    if (!$medAsignado && $med !== '' && !in_array(mb_strtolower($med), ['ninguno', 'ninguna', 'no', 'n/a', '-'])) {
+        $stOtro = $pdo->prepare("SELECT id FROM cat_patologias WHERE tipo = 'Otra' AND nombre = 'Tratamiento Médico Permanente' LIMIT 1");
+        $stOtro->execute();
+        $otroId = $stOtro->fetchColumn();
+        if (!$otroId) {
+            $pdo->prepare("INSERT INTO cat_patologias (tipo, nombre) VALUES ('Otra', 'Tratamiento Médico Permanente')")->execute();
+            $otroId = $pdo->lastInsertId();
+        }
+        $pdo->prepare("INSERT IGNORE INTO personal_salud_patologias (personal_id, patologia_id, medicamento_permanente) VALUES (?, ?, ?)")
+            ->execute([$personal_id, $otroId, $med]);
+    }
+}
+
+// =========================================================================
+// 4. FUNCIONES GLOBALES, MINIATURAS Y CONTROL DE ACCESO
 // =========================================================================
 function registrarHistorial($pdo, $tabla, $accion_str, $descripcion, $registro_id = null) {
     $usuario_id = $_SESSION['admin_id'] ?? null;
@@ -565,7 +758,6 @@ function obtenerRutaMiniatura($rutaOriginal) {
 
     $base = pathinfo($rutaOriginal, PATHINFO_FILENAME);
     $rutaThumb = $dirThumbs . '/thumb_' . $base . '.jpg';
-
     if (file_exists($rutaThumb)) return $rutaThumb;
 
     $info = @getimagesize($rutaOriginal);
@@ -580,7 +772,6 @@ function obtenerRutaMiniatura($rutaOriginal) {
     elseif ($tipo === IMAGETYPE_GIF) $src = @imagecreatefromgif($rutaOriginal);
     if (!$src) return $rutaOriginal;
 
-    // Corregir rotación automática de fotos tomadas verticalmente
     if ($tipo === IMAGETYPE_JPEG && function_exists('exif_read_data')) {
         $exif = @exif_read_data($rutaOriginal);
         if (!empty($exif['Orientation'])) {
@@ -612,16 +803,10 @@ function obtenerRutaMiniatura($rutaOriginal) {
 function tienePermisoReBAC($pdo, $usuario_id, $nombre_recurso, $accion = 'leer', $objeto_id = 0) {
     if (empty($usuario_id)) return false;
 
-    $colMap = [
-        'crear'    => 'puede_crear',
-        'leer'     => 'puede_leer',
-        'editar'   => 'puede_editar',
-        'eliminar' => 'puede_eliminar'
-    ];
+    $colMap = ['crear' => 'puede_crear', 'leer' => 'puede_leer', 'editar' => 'puede_editar', 'eliminar' => 'puede_eliminar'];
     $columna = $colMap[strtolower($accion)] ?? 'puede_leer';
 
     try {
-        // 1. Verificar tupla directa o comodín global (objeto_id = 0) en el Grafo ReBAC
         $sql = "
             SELECT MAX(p.$columna)
             FROM rebac_tuplas_grafo g
@@ -633,11 +818,8 @@ function tienePermisoReBAC($pdo, $usuario_id, $nombre_recurso, $accion = 'leer',
         ";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$usuario_id, $nombre_recurso, $objeto_id]);
-        if ((int)$stmt->fetchColumn() === 1) {
-            return true;
-        }
+        if ((int)$stmt->fetchColumn() === 1) return true;
 
-        // 2. Evaluación dinámica por grafo jerárquico (Organigrama)
         if ($objeto_id > 0 && in_array($nombre_recurso, ['asistencias', 'expediente_personal'])) {
             $sqlOrg = "
                 SELECT p.$columna
@@ -650,9 +832,7 @@ function tienePermisoReBAC($pdo, $usuario_id, $nombre_recurso, $accion = 'leer',
             ";
             $stmtOrg = $pdo->prepare($sqlOrg);
             $stmtOrg->execute([$nombre_recurso, $usuario_id, $objeto_id]);
-            if ((int)$stmtOrg->fetchColumn() === 1) {
-                return true;
-            }
+            if ((int)$stmtOrg->fetchColumn() === 1) return true;
         }
     } catch (PDOException $e) {
         return false;
@@ -664,12 +844,13 @@ function tienePermisoReBAC($pdo, $usuario_id, $nombre_recurso, $accion = 'leer',
 function exigirPermisoReBAC($pdo, $nombre_recurso, $accion = 'leer', $objeto_id = 0) {
     $uid = $_SESSION['admin_id'] ?? 0;
     if (!tienePermisoReBAC($pdo, $uid, $nombre_recurso, $accion, $objeto_id)) {
+        http_response_code(403);
         include '../Includes/header.php';
         include '../Includes/sidebar.php';
         echo '<div class="alert alert-danger shadow-sm p-4 text-center rounded-4 mt-5">
                 <i class="bi bi-shield-lock-fill fs-1 d-block mb-2"></i>
                 <h4>Acceso Restringido</h4>
-                <p class="mb-0">Tu cuenta no tiene permisos suficientes para esta sección.</p>
+                <p class="mb-0">Tu cuenta no tiene permisos suficientes para ingresar a esta sección.</p>
               </div>';
         include '../Includes/footer.php';
         exit;
