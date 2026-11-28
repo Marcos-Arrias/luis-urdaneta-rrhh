@@ -94,7 +94,7 @@ include '../Includes/sidebar.php';
 
 <div class="tab-content" id="ajustesTabContent">
     
-    <!-- PESTAÑA 1: APARIENCIA -->
+    <!-- PESTAÑA 1: APARIENCIA COMPLETA -->
     <div class="tab-pane fade show active" id="apariencia">
         <div class="row g-3 mb-4">
             <div class="col-lg-6">
@@ -152,6 +152,7 @@ include '../Includes/sidebar.php';
         </div>
 
         <div class="row g-3">
+            <!-- TEMA VISUAL -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-info">
                     <div class="card-body text-center py-4 d-flex flex-column justify-content-center align-items-center">
@@ -166,6 +167,7 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- COLOR DEL MENÚ -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-primary">
                     <div class="card-body text-center py-4">
@@ -184,6 +186,7 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- COLOR DE ACENTO -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-info">
                     <div class="card-body text-center py-4">
@@ -203,6 +206,7 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- ESTILO DE CONTENEDORES -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-warning">
                     <div class="card-body text-center py-4">
@@ -218,6 +222,7 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- FONDO AMBIENTAL -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-primary">
                     <div class="card-body text-center py-4">
@@ -232,6 +237,7 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- FORMA DE BOTONES -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-success">
                     <div class="card-body text-center py-4">
@@ -245,6 +251,7 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- BARRA SUPERIOR -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-info">
                     <div class="card-body text-center py-4">
@@ -258,6 +265,7 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- INDICADOR DEL MENÚ -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-warning">
                     <div class="card-body text-center py-4">
@@ -271,6 +279,7 @@ include '../Includes/sidebar.php';
                 </div>
             </div>
 
+            <!-- FUENTE DEL SISTEMA -->
             <div class="col-md-4">
                 <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-success">
                     <div class="card-body text-center py-4">
@@ -279,12 +288,62 @@ include '../Includes/sidebar.php';
                         <small class="text-muted d-block mb-3">Tipo de letra</small>
                         <select id="selectFontFamily" class="form-select form-select-sm shadow-sm border-0 bg-body-tertiary fw-bold">
                             <option value="default">Estándar</option><option value="Georgia, serif">Clásica (Georgia)</option>
-                            <option value="Tahoma, sans-serif">Compacta (Tahoma)</option><option value="'Trebuchet MS', sans-serif">Moderna (Trebuchet)</option>
+                            <option value="Tahoma, sans-serif">Compacta (Tahoma)</option><option value="'Courier New', Courier, monospace">Terminal (Courier)</option>
+                            <option value="'Trebuchet MS', sans-serif">Moderna (Trebuchet)</option>
                         </select>
                     </div>
                 </div>
             </div>
 
+            <!-- REDONDEADO DE BORDES (RESTAURADO) -->
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-secondary">
+                    <div class="card-body py-4">
+                        <div class="d-flex align-items-center mb-3">
+                            <i class="bi bi-bounding-box-circles fs-2 me-3 text-secondary"></i>
+                            <div><h6 class="fw-bold mb-0">Redondeado de Bordes</h6><small class="text-muted">Curvatura de tarjetas.</small></div>
+                        </div>
+                        <input type="range" class="form-range" id="rangeBorderRadius" min="1" max="3" step="1">
+                        <div class="d-flex justify-content-between small fw-bold text-muted mt-1">
+                            <span>Cuadrado</span><span>Estándar</span><span>Muy Suave</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DENSIDAD DE TABLAS (RESTAURADO) -->
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-secondary">
+                    <div class="card-body py-4">
+                        <div class="d-flex align-items-center mb-3">
+                            <i class="bi bi-table fs-3 me-3 text-secondary"></i>
+                            <div><h6 class="fw-bold mb-0">Densidad de Tablas</h6><small class="text-muted">Espacio entre filas.</small></div>
+                        </div>
+                        <input type="range" class="form-range" id="rangeTableDensity" min="1" max="3" step="1">
+                        <div class="d-flex justify-content-between small fw-bold text-muted mt-1">
+                            <span>Compacta</span><span>Normal</span><span>Relajada</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAMAÑO DE FUENTE (RESTAURADO) -->
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0 h-100 border-bottom border-4 border-danger">
+                    <div class="card-body py-4">
+                        <div class="d-flex align-items-center mb-3">
+                            <i class="bi bi-fonts fs-3 me-3 text-danger"></i>
+                            <div><h6 class="fw-bold mb-0">Tamaño de Fuente</h6><small class="text-muted">Ajusta la lectura global.</small></div>
+                        </div>
+                        <input type="range" class="form-range" id="rangeFontSize" min="1" max="3" step="1">
+                        <div class="d-flex justify-content-between small fw-bold text-muted mt-1">
+                            <span>Pequeña</span><span>Estándar</span><span>Grande</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ACCESIBILIDAD Y RESTABLECER -->
             <div class="col-12">
                 <div class="card shadow-sm border-0 border-start border-4 border-primary bg-body-tertiary">
                     <div class="card-body py-3 d-flex flex-wrap justify-content-between align-items-center gap-3">
@@ -354,7 +413,7 @@ include '../Includes/sidebar.php';
         </div>
     </div>
 
-    <!-- PESTAÑA 3: EXPORTAR (LIMPIA: 4 FORMATOS OFICIALES) -->
+    <!-- PESTAÑA 3: EXPORTAR COMPLETA -->
     <div class="tab-pane fade" id="exportar">
         <div class="card shadow-sm border-0 mb-4 border-top border-4 border-primary">
             <div class="card-body p-4">
@@ -397,7 +456,7 @@ include '../Includes/sidebar.php';
                         <div class="card text-center p-3 h-100 border-primary shadow-sm">
                             <i class="bi bi-file-earmark-word-fill text-primary fs-1 mb-2"></i>
                             <h6 class="fw-bold mb-1">Word (.DOC)</h6>
-                            <p class="small text-muted mb-3" style="font-size: 0.75rem;">Fichas editables para memorándums y constancias.</p>
+                            <p class="small text-muted mb-3" style="font-size: 0.75rem;">Fichas editables para memorándums y trámites.</p>
                             <button onclick="descargarReporte('word')" class="btn btn-primary btn-sm w-100 mt-auto"><i class="bi bi-download"></i> Descargar</button>
                         </div>
                     </div>
@@ -406,8 +465,35 @@ include '../Includes/sidebar.php';
                         <div class="card text-center p-3 h-100 border-info shadow-sm">
                             <i class="bi bi-file-earmark-image-fill text-info fs-1 mb-2"></i>
                             <h6 class="fw-bold mb-1">Imagen (JPG)</h6>
-                            <p class="small text-muted mb-3" style="font-size: 0.75rem;">Imagen lista para compartir o enviar fácilmente.</p>
+                            <p class="small text-muted mb-3" style="font-size: 0.75rem;">Imagen lista para enviar o compartir fácilmente.</p>
                             <button onclick="descargarReporte('jpg')" class="btn btn-info btn-sm w-100 mt-auto text-white"><i class="bi bi-camera"></i> Generar JPG</button>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card text-center p-3 h-100 border-secondary shadow-sm">
+                            <i class="bi bi-file-earmark-spreadsheet-fill text-secondary fs-1 mb-2"></i>
+                            <h6 class="fw-bold mb-1">Listado Compatible (.CSV)</h6>
+                            <p class="small text-muted mb-3" style="font-size: 0.75rem;">Archivo ligero compatible con Excel y otros programas.</p>
+                            <button onclick="descargarReporte('csv')" class="btn btn-secondary btn-sm w-100 mt-auto"><i class="bi bi-download"></i> Descargar</button>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card text-center p-3 h-100 border-warning shadow-sm">
+                            <i class="bi bi-filetype-json text-warning fs-1 mb-2"></i>
+                            <h6 class="fw-bold mb-1">Copia de Seguridad (.JSON)</h6>
+                            <p class="small text-muted mb-3" style="font-size: 0.75rem;">Respaldo completo del personal para restaurar datos.</p>
+                            <button onclick="descargarReporte('json')" class="btn btn-warning btn-sm w-100 mt-auto fw-bold text-dark"><i class="bi bi-download"></i> Descargar Copia</button>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-12 col-lg-4">
+                        <div class="card text-center p-3 h-100 border-secondary shadow-sm">
+                            <i class="bi bi-diagram-3-fill fs-1 mb-2 text-primary"></i>
+                            <h6 class="fw-bold mb-1">Organigrama</h6>
+                            <p class="small text-muted mb-3" style="font-size: 0.75rem;">Estructura jerárquica visual de la institución.</p>
+                            <button onclick="window.location.href='organigrama.php'" class="btn btn-outline-primary btn-sm w-100 mt-auto fw-bold"><i class="bi bi-eye"></i> Ir al Editor</button>
                         </div>
                     </div>
                 </div>
@@ -415,21 +501,28 @@ include '../Includes/sidebar.php';
         </div>
     </div>
 
-    <!-- PESTAÑA 4: IMPORTAR Y RESPALDOS -->
+    <!-- PESTAÑA 4: IMPORTAR Y RESPALDOS COMPLETA -->
     <div class="tab-pane fade" id="importar">
         <div class="row g-4">
             <div class="col-lg-6">
                 <div class="card shadow-sm border-0 h-100 border-top border-4 border-success">
                     <div class="card-body p-4">
                         <h5 class="fw-bold text-success"><i class="bi bi-filetype-csv me-2"></i>Importar Listado desde Excel (.CSV)</h5>
-                        <p class="small text-muted mb-3">Cargue listas completas de trabajadores desde Excel de una sola vez.</p>
+                        <p class="small text-muted mb-3">Ideal para cargar listados extensos de trabajadores sin ingresarlos uno a uno.</p>
                         <div class="alert alert-success bg-success-subtle text-success-emphasis border-0 small mb-3">
-                            <strong><i class="bi bi-info-circle-fill me-1"></i> Columnas del archivo:</strong><br>
-                            <code>Cédula, Nombres, Apellidos, ID_Cargo, Fecha_Ingreso</code>
+                            <strong><i class="bi bi-info-circle-fill me-1"></i> Especificaciones del Archivo:</strong>
+                            <ul class="mb-0 ps-3 mt-1">
+                                <li>Formato: Guardado como <code>CSV (delimitado por comas)</code>.</li>
+                                <li>Orden de Columnas: <code>Cédula, Nombres, Apellidos, ID_Cargo, Fecha_Ingreso</code></li>
+                                <li>Ejemplo: <code>31664538, Marcus, Vinicius, 1, 2024-09-15</code></li>
+                            </ul>
                         </div>
                         <form action="../PHP/importar.php" method="POST" enctype="multipart/form-data">
                             <input type="hidden" name="tipo_importacion" value="csv_personal">
-                            <div class="mb-3"><input type="file" name="archivo_csv" class="form-control" accept=".csv" required></div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Seleccionar Archivo (.csv):</label>
+                                <input type="file" name="archivo_csv" class="form-control" accept=".csv" required>
+                            </div>
                             <button type="submit" class="btn btn-success w-100 fw-bold"><i class="bi bi-cloud-arrow-up-fill me-1"></i> Cargar Listado</button>
                         </form>
                     </div>
@@ -440,19 +533,26 @@ include '../Includes/sidebar.php';
                 <div class="card shadow-sm border-0 h-100 border-top border-4 border-primary">
                     <div class="card-body p-4">
                         <h5 class="fw-bold text-primary"><i class="bi bi-folder-plus me-2"></i>Subir Documento a un Trabajador</h5>
-                        <p class="small text-muted mb-3">Guarda un soporte directamente en el expediente de una persona.</p>
+                        <p class="small text-muted mb-3">Guarda fotos o archivos escaneados directamente en el expediente de una persona.</p>
+                        <div class="alert alert-primary bg-primary-subtle text-primary-emphasis border-0 small mb-3">
+                            <strong><i class="bi bi-shield-check me-1"></i> Guardado Organizado:</strong>
+                            <ul class="mb-0 ps-3 mt-1">
+                                <li>Formatos permitidos: <code>JPG, PNG, PDF, WEBP</code>.</li>
+                                <li>Se almacena en la carpeta <code>documentos/</code> y aparece automáticamente en el Archivo Digital.</li>
+                            </ul>
+                        </div>
                         <form action="../PHP/importar.php" method="POST" enctype="multipart/form-data">
                             <input type="hidden" name="tipo_importacion" value="documento_personal">
                             <div class="row g-2 mb-2">
                                 <div class="col-md-7">
-                                    <label class="form-label small fw-bold">Trabajador:</label>
+                                    <label class="form-label small fw-bold">Trabajador Destino:</label>
                                     <select name="personal_id" class="form-select form-select-sm" required>
                                         <option value="">Seleccione personal...</option>
                                         <?php foreach ($personal_lista as $p): ?><option value="<?= $p['id'] ?>">V-<?= $p['cedula'] ?> - <?= htmlspecialchars($p['nombre']) ?></option><?php endforeach; ?>
                                     </select>
                                 </div>
                                 <div class="col-md-5">
-                                    <label class="form-label small fw-bold">Tipo:</label>
+                                    <label class="form-label small fw-bold">Tipo de Documento:</label>
                                     <select name="tipo_documento" class="form-select form-select-sm" required>
                                         <option value="CED">Cédula</option><option value="FOT">Foto Carnet</option>
                                         <option value="TIT">Título</option><option value="MED">Cert. Médico</option>
@@ -460,7 +560,10 @@ include '../Includes/sidebar.php';
                                     </select>
                                 </div>
                             </div>
-                            <div class="mb-3"><input type="file" name="archivo_adjunto" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp" required></div>
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">Seleccionar Archivo:</label>
+                                <input type="file" name="archivo_adjunto" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.webp" required>
+                            </div>
                             <button type="submit" class="btn btn-primary w-100 fw-bold btn-sm"><i class="bi bi-upload me-1"></i> Guardar Archivo</button>
                         </form>
                     </div>
@@ -469,19 +572,18 @@ include '../Includes/sidebar.php';
 
             <div class="col-12">
                 <div class="card shadow-sm border-0 border-top border-4 border-warning bg-body-tertiary">
-                    <div class="card-body p-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
-                        <div>
-                            <h5 class="fw-bold mb-1 text-warning-emphasis"><i class="bi bi-database-fill-up me-2 text-warning"></i>Copias de Seguridad del Sistema</h5>
-                            <p class="small text-muted mb-0">Descarga una copia de respaldo completa o restaura una copia guardada anteriormente.</p>
+                    <div class="card-body p-4">
+                        <h5 class="fw-bold mb-1 text-warning-emphasis"><i class="bi bi-database-fill-up me-2 text-warning"></i>Restaurar Copia de Seguridad (.JSON)</h5>
+                        <p class="small text-muted mb-3">Recuperación completa de trabajadores junto con todos sus datos del expediente.</p>
+                        <div class="alert alert-warning bg-warning-subtle text-warning-emphasis border-0 small mb-3">
+                            <strong><i class="bi bi-exclamation-triangle-fill me-1"></i> Información de Restauración:</strong>
+                            Al subir un archivo de respaldo, el sistema restaurará los datos principales del personal, sus cargos, contactos, tallas, cuentas bancarias, turno y datos médicos.
                         </div>
-                        <div class="d-flex flex-wrap gap-2 align-items-center">
-                            <button type="button" onclick="descargarReporte('json')" class="btn btn-outline-warning fw-bold text-nowrap"><i class="bi bi-download me-1"></i> Descargar Copia</button>
-                            <form action="../PHP/importar.php" method="POST" enctype="multipart/form-data" class="d-flex gap-2">
-                                <input type="hidden" name="tipo_importacion" value="json_restore">
-                                <input type="file" name="archivo_json" class="form-control form-control-sm" accept=".json" required>
-                                <button type="submit" class="btn btn-warning btn-sm fw-bold text-dark text-nowrap"><i class="bi bi-arrow-repeat me-1"></i> Restaurar</button>
-                            </form>
-                        </div>
+                        <form action="../PHP/importar.php" method="POST" enctype="multipart/form-data" class="d-flex flex-wrap gap-2">
+                            <input type="hidden" name="tipo_importacion" value="json_restore">
+                            <input type="file" name="archivo_json" class="form-control flex-grow-1" accept=".json" required>
+                            <button type="submit" class="btn btn-warning fw-bold text-dark text-nowrap"><i class="bi bi-arrow-repeat me-1"></i> Iniciar Restauración</button>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -493,11 +595,15 @@ include '../Includes/sidebar.php';
         <div class="card shadow-sm border-0 border-top border-4 border-primary">
             <div class="card-body p-4">
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
-                    <div><h5 class="fw-bold mb-1"><i class="bi bi-keyboard-fill me-2 text-primary"></i>Asignación de Atajos de Teclado</h5><p class="small text-muted mb-0">Personaliza tus teclas rápidas para navegar al instante.</p></div>
+                    <div><h5 class="fw-bold mb-1"><i class="bi bi-keyboard-fill me-2 text-primary"></i>Asignación de Atajos de Teclado</h5><p class="small text-muted mb-0">Personaliza tus teclas rápidas para navegar y abrir ventanas al instante.</p></div>
                     <div class="d-flex align-items-center gap-3">
                         <div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="switchAtajosActivos" checked style="cursor:pointer;"><label class="form-check-label small fw-bold" for="switchAtajosActivos">Atajos Habilitados</label></div>
                         <button type="button" class="btn btn-outline-danger btn-sm rounded-pill px-3 fw-bold" onclick="restablecerAtajosDefault()"><i class="bi bi-arrow-counterclockwise me-1"></i> Restablecer</button>
                     </div>
+                </div>
+                <div class="alert alert-info bg-info-subtle text-info-emphasis border-0 small mb-3">
+                    <i class="bi bi-info-circle-fill me-1"></i>
+                    Haz clic en <strong>"Cambiar"</strong> y presiona la combinación deseada (ej: <kbd>Alt</kbd>+<kbd>A</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> o <kbd>F2</kbd>–<kbd>F10</kbd>).
                 </div>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
